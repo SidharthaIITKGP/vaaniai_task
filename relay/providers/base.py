@@ -22,6 +22,10 @@ class RateLimitError(ProviderError):
     pass
 
 
+class TruncatedResponseError(ProviderError):
+    pass
+
+
 class ModelProvider(ABC):
     @abstractmethod
     async def generate(self, messages: list[dict[str, str]], **kwargs: Any) -> ProviderResponse: ...

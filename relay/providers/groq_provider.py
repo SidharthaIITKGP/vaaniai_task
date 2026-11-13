@@ -12,8 +12,8 @@ from dotenv import load_dotenv
 
 from ..config import ProviderConfig
 from ..schemas import ProviderResponse, Usage
-from .base import ModelProvider, ProviderError, RateLimitError
-from .scheduler import RequestScheduler, Reservation, estimate_tokens
+from .base import ModelProvider, ProviderError, RateLimitError, TruncatedResponseError
+from .scheduler import RequestScheduler, Reservation, estimate_input_tokens
 
 
 class GroqProvider(ModelProvider):
@@ -55,10 +55,41 @@ class GroqProvider(ModelProvider):
         return payload
 
     async def _reserve(self, payload: dict[str, Any]) -> Reservation | None:
+        deadline = payload.pop("_queue_deadline_seconds", None)
         if self.scheduler is None:
             return None
-        return await self.scheduler.acquire(estimate_tokens(
-            payload.get("messages", []), int(payload.get("max_completion_tokens", 0))))
+        return await self.scheduler.acquire(
+            estimate_input_tokens(payload.get("messages", [])),
+            int(payload.get("max_completion_tokens", 0)),
+            deadline_seconds=deadline,
+        )
+
+    def _context(self, overrides: dict[str, Any]) -> dict[str, Any]:
+        stage = str(overrides.pop("stage", "unknown"))
+        context = {
+            "stage": stage,
+            "pipeline_request_id": overrides.pop("request_id", None),
+            "architecture": overrides.pop("architecture", None),
+            "queue_deadline_seconds": overrides.pop("queue_deadline_seconds", None),
+        }
+        if "max_output_tokens" not in overrides and stage in self.config.stage_output_tokens:
+            overrides["max_output_tokens"] = self.config.stage_output_tokens[stage]
+        return context
+
+    @staticmethod
+    def _reservation_metadata(reservation: Reservation | None, context: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "queue_wait_ms": reservation.queue_wait_ms if reservation else None,
+            "estimated_input_tokens": reservation.estimated_input_tokens if reservation else None,
+            "reserved_output_tokens": reservation.reserved_output_tokens if reservation else None,
+            "reserved_total_tokens": reservation.reserved_tokens if reservation else None,
+            "local_rpm_remaining": reservation.local_rpm_remaining if reservation else None,
+            "local_tpm_remaining": reservation.local_tpm_remaining if reservation else None,
+            "scheduler_wait_reason": reservation.wait_reason if reservation else None,
+            "pipeline_request_id": context.get("pipeline_request_id"),
+            "architecture": context.get("architecture"),
+            "stage": context.get("stage"),
+        }
 
     @staticmethod
     def _rate_headers(response: httpx.Response) -> dict[str, str]:
@@ -93,46 +124,63 @@ class GroqProvider(ModelProvider):
                 response = await client.post(self.endpoint, headers=headers, json=payload)
         rate_headers = await self._observe_response(response)
         if response.status_code == 429:
+            if self.scheduler:
+                await self.scheduler.refund_rejected(reservation)
             retry = rate_headers.get("retry-after")
             raise RateLimitError("Groq rate limit exceeded", status_code=429,
                                  retry_after=retry, rate_limit_type=_classify_429(response.text),
                                  queue_wait_ms=reservation.queue_wait_ms if reservation else None)
         if response.status_code >= 400:
+            if self.scheduler and response.status_code < 500:
+                await self.scheduler.refund_rejected(reservation)
             raise ProviderError(f"Groq HTTP {response.status_code}: {response.text[:500]}",
                                 status_code=response.status_code,
                                 queue_wait_ms=reservation.queue_wait_ms if reservation else None)
         return response, rate_headers
 
     async def generate(self, messages: list[dict[str, str]], **kwargs: Any) -> ProviderResponse:
+        context = self._context(kwargs)
         payload = self._payload(messages, stream=False, **kwargs)
+        payload["_queue_deadline_seconds"] = context["queue_deadline_seconds"]
         reservation = await self._reserve(payload)
         started = time.perf_counter()
         try:
             response, rate_headers = await self._post(payload, reservation)
         except httpx.TimeoutException as exc:
-            raise ProviderError(f"Groq request timed out: {exc}") from exc
+            raise ProviderError(
+                f"Groq request timed out with uncertain token consumption: {exc}",
+                queue_wait_ms=reservation.queue_wait_ms if reservation else None) from exc
         try:
             data = response.json()
             text = data["choices"][0]["message"].get("content", "")
+            finish_reason = data["choices"][0].get("finish_reason")
         except (ValueError, KeyError, IndexError, TypeError) as exc:
             raise ProviderError(f"Malformed Groq response: {exc}") from exc
         usage = data.get("usage") or {}
         if self.scheduler and reservation:
             await self.scheduler.reconcile(reservation, _usage_total(usage))
-        return ProviderResponse(
+        if finish_reason == "length":
+            raise TruncatedResponseError(
+                "Groq response was truncated at max_completion_tokens",
+                status_code=response.status_code,
+                queue_wait_ms=reservation.queue_wait_ms if reservation else None)
+        result = ProviderResponse(
             text=text,
             usage=Usage(usage.get("prompt_tokens"), usage.get("completion_tokens")),
             latency_ms=(time.perf_counter() - started) * 1000,
             model=data.get("model", self.config.model),
-            queue_wait_ms=reservation.queue_wait_ms if reservation else None,
             provider_status_code=response.status_code, rate_limit_headers=rate_headers, raw=data,
+            **self._reservation_metadata(reservation, context),
         )
+        return result
 
     async def stream(self, messages: list[dict[str, str]], **kwargs: Any) -> AsyncIterator[str]:
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
         client = self._client or httpx.AsyncClient(timeout=self.config.timeout_seconds)
         owns = self._client is None
+        context = self._context(kwargs)
         payload = self._payload(messages, stream=True, **kwargs)
+        payload["_queue_deadline_seconds"] = context["queue_deadline_seconds"]
         reservation = await self._reserve(payload)
         usage: dict[str, Any] = {}
         try:
@@ -140,12 +188,16 @@ class GroqProvider(ModelProvider):
                                      json=payload) as response:
                 rate_headers = await self._observe_response(response)
                 if response.status_code == 429:
+                    if self.scheduler:
+                        await self.scheduler.refund_rejected(reservation)
                     body = (await response.aread()).decode(errors="replace")
                     raise RateLimitError("Groq rate limit exceeded", status_code=429,
                                          retry_after=rate_headers.get("retry-after"),
                                          rate_limit_type=_classify_429(body),
                                          queue_wait_ms=reservation.queue_wait_ms if reservation else None)
                 if response.status_code >= 400:
+                    if self.scheduler and response.status_code < 500:
+                        await self.scheduler.refund_rejected(reservation)
                     body = (await response.aread()).decode(errors="replace")
                     raise ProviderError(f"Groq HTTP {response.status_code}: {body[:500]}",
                                         status_code=response.status_code)
@@ -180,7 +232,10 @@ class GroqProvider(ModelProvider):
         chunks: list[str] = []
         usage: dict[str, Any] = {}
         model: str | None = self.config.model
+        finish_reason: str | None = None
+        context = self._context(kwargs)
         payload = self._payload(messages, stream=True, **kwargs)
+        payload["_queue_deadline_seconds"] = context["queue_deadline_seconds"]
         reservation = await self._reserve(payload)
         started = time.perf_counter()
         rate_headers: dict[str, str] = {}
@@ -189,12 +244,16 @@ class GroqProvider(ModelProvider):
                                      json=payload) as response:
                 rate_headers = await self._observe_response(response)
                 if response.status_code == 429:
+                    if self.scheduler:
+                        await self.scheduler.refund_rejected(reservation)
                     body = (await response.aread()).decode(errors="replace")
                     raise RateLimitError("Groq rate limit exceeded", status_code=429,
                                          retry_after=rate_headers.get("retry-after"),
                                          rate_limit_type=_classify_429(body),
                                          queue_wait_ms=reservation.queue_wait_ms if reservation else None)
                 if response.status_code >= 400:
+                    if self.scheduler and response.status_code < 500:
+                        await self.scheduler.refund_rejected(reservation)
                     body = (await response.aread()).decode(errors="replace")
                     raise ProviderError(f"Groq HTTP {response.status_code}: {body[:500]}",
                                         status_code=response.status_code)
@@ -211,6 +270,7 @@ class GroqProvider(ModelProvider):
                     model = event.get("model", model)
                     usage.update(event.get("usage") or {})
                     for choice in event.get("choices", []):
+                        finish_reason = choice.get("finish_reason") or finish_reason
                         content = (choice.get("delta") or {}).get("content")
                         if content:
                             if first_token is None:
@@ -223,23 +283,32 @@ class GroqProvider(ModelProvider):
                 await self.scheduler.reconcile(reservation, _usage_total(usage))
             if owns:
                 await client.aclose()
-        return ProviderResponse(
+        result = ProviderResponse(
             text="".join(chunks),
             usage=Usage(usage.get("prompt_tokens"), usage.get("completion_tokens")),
             latency_ms=(time.perf_counter() - started) * 1000,
             ttft_ms=(first_token - started) * 1000 if first_token is not None else None,
-            model=model, queue_wait_ms=reservation.queue_wait_ms if reservation else None,
+            model=model,
             provider_status_code=200, rate_limit_headers=rate_headers,
+            **self._reservation_metadata(reservation, context),
         )
+        if finish_reason == "length":
+            raise TruncatedResponseError(
+                "Groq response was truncated at max_completion_tokens",
+                status_code=200, queue_wait_ms=reservation.queue_wait_ms if reservation else None)
+        return result
 
     async def generate_json(self, messages: list[dict[str, str]], **kwargs: Any) -> tuple[dict[str, Any], ProviderResponse]:
+        context = self._context(kwargs)
         payload = self._payload(messages, stream=False, json_mode=True, **kwargs)
+        payload["_queue_deadline_seconds"] = context["queue_deadline_seconds"]
         reservation = await self._reserve(payload)
         started = time.perf_counter()
         response, rate_headers = await self._post(payload, reservation)
         try:
             data = response.json()
             text = data["choices"][0]["message"].get("content", "")
+            finish_reason = data["choices"][0].get("finish_reason")
         except (ValueError, KeyError, IndexError, TypeError) as exc:
             raise ProviderError(f"Malformed Groq response: {exc}") from exc
         usage = data.get("usage") or {}
@@ -248,9 +317,14 @@ class GroqProvider(ModelProvider):
         result = ProviderResponse(text=text, usage=Usage(usage.get("prompt_tokens"), usage.get("completion_tokens")),
                                   latency_ms=(time.perf_counter() - started) * 1000,
                                   model=data.get("model", self.config.model),
-                                  queue_wait_ms=reservation.queue_wait_ms if reservation else None,
                                   provider_status_code=response.status_code,
-                                  rate_limit_headers=rate_headers, raw=data)
+                                  rate_limit_headers=rate_headers, raw=data,
+                                  **self._reservation_metadata(reservation, context))
+        if finish_reason == "length":
+            raise TruncatedResponseError(
+                "Groq structured response was truncated at max_completion_tokens",
+                status_code=response.status_code,
+                queue_wait_ms=reservation.queue_wait_ms if reservation else None)
         try:
             return json.loads(text), result
         except json.JSONDecodeError as exc:

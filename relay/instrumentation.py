@@ -17,6 +17,8 @@ def ms(seconds: float) -> float:
 @dataclass(slots=True)
 class CallMetric:
     stage: str
+    pipeline_request_id: str | None
+    architecture: str | None
     latency_ms: float | None
     provider_ttft_ms: float | None
     input_tokens: int | None
@@ -26,6 +28,13 @@ class CallMetric:
     provider_status_code: int | None
     rate_limit_type: str | None
     retry_after_seconds: float | None
+    estimated_input_tokens: int | None
+    reserved_output_tokens: int | None
+    reserved_total_tokens: int | None
+    local_rpm_remaining: int | None
+    local_tpm_remaining: float | None
+    scheduler_wait_reason: str | None
+    provider_rate_limit_headers: dict[str, str]
 
 
 @dataclass(slots=True)
@@ -70,18 +79,29 @@ class RequestTrace:
     provider_error: dict[str, Any] | None = None
 
     def add_call(self, stage: str, response: ProviderResponse) -> None:
-        self.llm_calls.append(CallMetric(stage, response.latency_ms, response.ttft_ms,
+        self.llm_calls.append(CallMetric(stage, response.pipeline_request_id,
+                                         response.architecture,
+                                         response.latency_ms, response.ttft_ms,
                                          response.usage.input_tokens, response.usage.output_tokens,
                                          response.model, response.queue_wait_ms,
                                          response.provider_status_code, response.rate_limit_type,
-                                         response.retry_after_seconds))
+                                         response.retry_after_seconds,
+                                         response.estimated_input_tokens,
+                                         response.reserved_output_tokens,
+                                         response.reserved_total_tokens,
+                                         response.local_rpm_remaining,
+                                         response.local_tpm_remaining,
+                                         response.scheduler_wait_reason,
+                                         response.rate_limit_headers))
 
     def add_failed_call(self, stage: str, error: Any | None = None) -> None:
-        self.llm_calls.append(CallMetric(stage, None, None, None, None, None,
+        self.llm_calls.append(CallMetric(stage, self.request_id, self.architecture,
+                                         None, None, None, None, None,
                                          getattr(error, "queue_wait_ms", None),
                                          getattr(error, "status_code", None),
                                          getattr(error, "rate_limit_type", None),
-                                         _float_or_none(getattr(error, "retry_after", None))))
+                                         _float_or_none(getattr(error, "retry_after", None)),
+                                         None, None, None, None, None, None, {}))
 
     def metrics(self) -> dict[str, Any]:
         values = asdict(self)

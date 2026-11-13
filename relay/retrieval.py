@@ -78,14 +78,20 @@ class HybridRetriever:
         self.bm25 = BM25Index([tokenize(c.text) for c in chunks])
         self.embeddings = np.asarray(self.embedder.encode([c.text for c in chunks]), dtype=float)
 
-    def retrieve(self, query: str, top_k: int | None = None) -> list[RetrievedPassage]:
+    def retrieve(self, query: str, top_k: int | None = None,
+                 paper_ids: set[str] | None = None) -> list[RetrievedPassage]:
         top_k = top_k or self.config.top_k
-        candidate_k = min(max(top_k, self.config.candidate_k), len(self.chunks))
+        allowed = [index for index, chunk in enumerate(self.chunks)
+                   if not paper_ids or chunk.paper_id in paper_ids]
+        if not allowed:
+            return []
+        candidate_k = min(max(top_k, self.config.candidate_k), len(allowed))
         sparse = self.bm25.scores(tokenize(query))
         query_vector = np.asarray(self.embedder.encode([query]))[0]
         dense = _cosine(query_vector, self.embeddings)
-        sparse_order = np.argsort(-sparse, kind="stable")[:candidate_k]
-        dense_order = np.argsort(-dense, kind="stable")[:candidate_k]
+        allowed_array = np.asarray(allowed, dtype=int)
+        sparse_order = allowed_array[np.argsort(-sparse[allowed_array], kind="stable")[:candidate_k]]
+        dense_order = allowed_array[np.argsort(-dense[allowed_array], kind="stable")[:candidate_k]]
         sparse_rank = {int(idx): rank + 1 for rank, idx in enumerate(sparse_order)}
         dense_rank = {int(idx): rank + 1 for rank, idx in enumerate(dense_order)}
         candidates = set(sparse_rank) | set(dense_rank)
@@ -130,4 +136,36 @@ def merge_passages(groups: list[list[RetrievedPassage]], top_k: int) -> list[Ret
     for rank, item in enumerate(ordered, 1):
         item.rank = rank
     return ordered
+
+
+PAPER_NAME_PATTERNS = {
+    "1706.03762": re.compile(r"\b(?:original\s+)?transformer\b|attention is all you need", re.I),
+    "2410.00037": re.compile(r"\bmoshi\b|\bmimi\b|\bhelium\b", re.I),
+    "2507.07955": re.compile(r"\bh[- ]?net\b|dynamic chunking", re.I),
+}
+
+
+def comparison_paper_ids(question: str) -> list[str]:
+    named = [paper_id for paper_id, pattern in PAPER_NAME_PATTERNS.items() if pattern.search(question)]
+    # Mentioning two library papers is sufficient to require coverage from both, even when
+    # the comparison is phrased indirectly (for example, "How does Moshi build on Transformers?").
+    return named if len(named) >= 2 else []
+
+
+def merge_passages_with_coverage(groups: list[list[RetrievedPassage]], top_k: int,
+                                 required_papers: list[str]) -> list[RetrievedPassage]:
+    candidates = merge_passages(groups, max(top_k, sum(len(group) for group in groups)))
+    selected: list[RetrievedPassage] = []
+    for paper_id in required_papers:
+        match = next((item for item in candidates if item.chunk.paper_id == paper_id), None)
+        if match and match.chunk.chunk_id not in {item.chunk.chunk_id for item in selected}:
+            selected.append(match)
+    for item in candidates:
+        if len(selected) >= top_k:
+            break
+        if item.chunk.chunk_id not in {chosen.chunk.chunk_id for chosen in selected}:
+            selected.append(item)
+    for rank, item in enumerate(selected, 1):
+        item.rank = rank
+    return selected
 

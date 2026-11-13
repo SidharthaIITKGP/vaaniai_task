@@ -11,7 +11,8 @@ from ..config import RelayConfig
 from ..evidence import assess_evidence
 from ..instrumentation import RequestTrace, Timer
 from ..providers.base import ModelProvider
-from ..retrieval import HybridRetriever
+from ..retrieval import (HybridRetriever, comparison_paper_ids,
+                         merge_passages_with_coverage)
 from ..schemas import PipelineResult, ProviderResponse, RetrievedPassage
 from ..verification import format_evidence
 
@@ -30,7 +31,16 @@ class BaseArchitecture(ABC):
 
     def retrieve(self, question: str, trace: RequestTrace) -> tuple[list[RetrievedPassage], bool]:
         with Timer() as timer:
-            evidence = self.retriever.retrieve(question)
+            required = comparison_paper_ids(question)
+            if len(required) >= 2:
+                per_paper = max(1, self.config.retrieval.top_k // len(required))
+                groups = [self.retriever.retrieve(question)]
+                groups.extend(self.retriever.retrieve(
+                    question, top_k=per_paper, paper_ids={paper_id}) for paper_id in required)
+                evidence = merge_passages_with_coverage(
+                    groups, self.config.retrieval.top_k, required)
+            else:
+                evidence = self.retriever.retrieve(question)
         trace.retrieval_ms = timer.elapsed_ms
         trace.retrieved_chunk_ids = [p.chunk.chunk_id for p in evidence]
         with Timer() as timer:
@@ -45,14 +55,15 @@ class BaseArchitecture(ABC):
         messages = [
             {"role": "system", "content": (
                 "Answer only from the supplied evidence. Cite every factual claim using only the short aliases "
-                "shown as CITATION_ALIAS, formatted exactly like [S1] or [S1][S2]. Never put multiple aliases "
+                "shown at the start of each passage, formatted exactly like [S1] or [S1][S2]. Never put multiple aliases "
                 "inside one bracket and never cite CHUNK_ID, page, section, or SOURCE_ID text. "
                 f"If the evidence does not establish the answer, respond exactly: {REFUSAL}"
             )},
             {"role": "user", "content": f"QUESTION:\n{question}\n\nEVIDENCE:\n{format_evidence(evidence, aliases)}"},
         ]
         trace.pipeline_failure_stage = stage
-        response = await self.provider.generate_streaming(messages)
+        response = await self.provider.generate_streaming(
+            messages, stage=stage, request_id=trace.request_id, architecture=self.name)
         trace.add_call(stage, response)
         trace.pipeline_failure_stage = None
         return response.text.strip(), response

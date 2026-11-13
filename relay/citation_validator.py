@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 from .schemas import RetrievedPassage
 
 
-BRACKET_RE = re.compile(r"\[([^\[\]\n]+)\]")
+VALID_CITATION_RE = re.compile(r"(?<!\\)\[(S[1-9]\d*)\]")
+BRACKET_RE = re.compile(r"(?<!\\)\[([^\[\]\n]+)\]")
 ALIAS_RE = re.compile(r"S[1-9]\d*")
 
 
@@ -32,9 +33,11 @@ def validate_citations(answer: str, evidence: list[RetrievedPassage],
     if refusal_text is not None and answer.strip() == refusal_text:
         return CitationValidation(True, reason="explicit refusal; citations not required",
                                   alias_mapping=mapping)
-    raw = [value.strip() for value in BRACKET_RE.findall(answer)]
-    aliases = list(dict.fromkeys(raw))
-    invalid = [value for value in aliases if not ALIAS_RE.fullmatch(value) or value not in mapping]
+    aliases = list(dict.fromkeys(VALID_CITATION_RE.findall(answer)))
+    # Ignore ordinary prose/LaTeX brackets. Reject only malformed source-alias attempts.
+    malformed = [value.strip() for value in BRACKET_RE.findall(answer)
+                 if re.search(r"(?:^|\W)S\d", value) and not ALIAS_RE.fullmatch(value.strip())]
+    invalid = malformed + [value for value in aliases if value not in mapping]
     cited_ids = [mapping[value] for value in aliases if value in mapping and ALIAS_RE.fullmatch(value)]
     available = {passage.chunk.chunk_id for passage in evidence}
     unresolved = [chunk_id for chunk_id in cited_ids if chunk_id not in available]

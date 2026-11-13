@@ -127,7 +127,8 @@ class IntentRouter:
         reason = "paper-domain term matched" if PAPER_TERMS.search(question) else "ambiguous; conservative RAG fallback"
         return RoutingDecision("paper_question", "rules", reason=reason)
 
-    async def route(self, question: str) -> RoutingDecision:
+    async def route(self, question: str, *, request_id: str | None = None,
+                    architecture: str | None = None) -> RoutingDecision:
         started = time.perf_counter()
         if self.config.mode != "llm":
             conversational = _conversation_rule(question)
@@ -161,7 +162,8 @@ class IntentRouter:
                 {"role": "user", "content": question.strip()},
             ], max_output_tokens=self.config.max_output_tokens,
                reasoning_effort=self.config.reasoning_effort,
-               json_schema=INTENT_SCHEMA, schema_name="intent_classification", strict=True)
+               json_schema=INTENT_SCHEMA, schema_name="intent_classification", strict=True,
+               stage="routing", request_id=request_id, architecture=architecture)
             parsed = IntentClassification.model_validate(data)
             direct = None
             if parsed.intent == "conversation":

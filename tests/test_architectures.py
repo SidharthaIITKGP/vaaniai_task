@@ -1,4 +1,5 @@
 import pytest
+import asyncio
 
 from relay.pipeline import RAGPipeline
 from relay.providers.base import ProviderError, RateLimitError
@@ -6,9 +7,9 @@ from relay.providers.base import ProviderError, RateLimitError
 from conftest import MockProvider
 
 
-OK_VERIFY = {"supported": True, "unsupported_claims": [], "invalid_citations": [],
+OK_VERIFY = {"unsupported_claims": [],
              "decision": "return", "reason": "all claims supported"}
-FAIL_VERIFY = {"supported": False, "unsupported_claims": ["unsupported"], "invalid_citations": [],
+FAIL_VERIFY = {"unsupported_claims": ["unsupported"],
                "decision": "refuse", "reason": "claim lacks support"}
 
 
@@ -41,6 +42,10 @@ async def test_verified_two_calls(retriever, config):
     assert result.metrics["architecture_model_calls"] == 2
     assert result.metrics["verification_executed"] is True
     assert result.metrics["verification_supported"] is True
+    verification_prompt = provider.messages_seen[1][1]["content"]
+    assert "[S1]" in verification_prompt
+    assert "[S2]" not in verification_prompt
+    assert provider.kwargs_seen[1]["max_output_tokens"] == 640
 
 
 @pytest.mark.asyncio
@@ -90,8 +95,44 @@ async def test_revision_is_bounded(retriever, config):
 
 
 @pytest.mark.asyncio
+async def test_default_revision_corrects_once_and_reverifies(retriever, config):
+    revise = dict(FAIL_VERIFY, decision="revise")
+    provider = MockProvider(["Draft [S1]", revise, "Corrected [S1]", OK_VERIFY])
+    result = await RAGPipeline("verified", retriever, provider, config).run("Explain Moshi dialogue")
+    assert result.status == "ok"
+    assert result.answer == "Corrected [S1]"
+    assert provider.calls == ["generate_streaming", "json", "generate_streaming", "json"]
+    assert result.metrics["model_calls_by_stage"] == {
+        "generation": 1, "verification": 1, "revision": 1, "revision_verification": 1}
+
+
+@pytest.mark.asyncio
+async def test_fast_cross_paper_path_contains_each_named_paper(retriever, config):
+    provider = MockProvider(["Comparison [S1][S2]"])
+    result = await RAGPipeline("fast", retriever, provider, config).run(
+        "Compare the original Transformer and H-Net input approaches")
+    retrieved_papers = {chunk.paper_id for chunk in retriever.chunks
+                        if chunk.chunk_id in result.retrieved_chunk_ids}
+    assert result.status == "ok"
+    assert {"1706.03762", "2507.07955"}.issubset(retrieved_papers)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("error,status", [(ProviderError("down"), "provider_error"),
                                            (RateLimitError("slow", status_code=429, retry_after="2"), "rate_limited")])
 async def test_provider_errors_are_distinct(retriever, config, error, status):
     result = await RAGPipeline("fast", retriever, MockProvider([error]), config).run("Explain attention")
     assert result.status == status and result.error
+
+
+@pytest.mark.asyncio
+async def test_total_interactive_deadline_returns_capacity_status(retriever, config):
+    class SlowProvider(MockProvider):
+        async def generate_streaming(self, messages, **kwargs):
+            await asyncio.sleep(0.05)
+            return await super().generate_streaming(messages, **kwargs)
+    config.total_request_deadline_seconds = 0.01
+    result = await RAGPipeline("fast", retriever, SlowProvider(["answer [S1]"]), config).run(
+        "Explain attention")
+    assert result.status == "capacity_timeout"
+    assert "deadline" in result.error.lower()

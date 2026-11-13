@@ -1,5 +1,9 @@
 # The Relay — three RAG architectures
 
+The experiment workflow, measured diagnostics, and remaining quality gates are documented in
+[docs/EXPERIMENTS.md](docs/EXPERIMENTS.md). Current architecture and retrieval winners remain
+unselected until complete matched evaluations and independent PDF-based grading are available.
+
 This project implements the three Experiment 1 candidate architectures over exactly the required papers. It does not run benchmarks, generate evaluation data, or select a winner.
 
 ## Setup
@@ -75,6 +79,38 @@ provider scheduler reserves estimated prompt plus output capacity, reconciles ac
 queue wait from provider execution, consumes rate-limit headers, and honors `Retry-After` without
 unbounded retries. The original `results/architecture_evaluation.csv` is never modified by default.
 
+The TPM scheduler uses continuously refilling capacity instead of waiting for an entire fixed
+60-second window. Stage defaults are 256 completion tokens for routing, 384 for planning, and 640
+for generation, revision, and semantic verification. Definitive HTTP 4xx rejections refund their token
+reservation; timeouts and unknown-usage failures retain conservative accounting.
+
+Interactive CLI requests default to a 3-second admission deadline and 10-second total deadline:
+
+```bash
+python -m relay.cli ask --architecture fast --question "Explain multi-head attention" \
+  --queue-deadline 3 --total-deadline 10
+```
+
+Evaluation subsets and bounded workers share one scheduler:
+
+```bash
+python -m relay.evaluate --subset smoke6 --workers 2 --output results/scheduler_smoke6.csv
+python -m relay.evaluate --subset formal15 --workers 2 --output results/formal15.csv
+python -m relay.evaluate --subset full30 --workers 2 --output results/architecture_evaluation_optimized.csv
+```
+
+`--mode end-to-end` measures the complete workflow. `--mode architecture-only` precomputes shared
+routing and initial retrieval and labels those rows accordingly; cached timings are not uncached
+end-to-end measurements. Verification defaults to only the deterministically cited passages; this
+retains the evidence needed to check each claim while avoiding retransmission of uncited chunks.
+Full retrieved evidence remains available for controlled comparison via `--verification-evidence full`.
+
+Run the deterministic scheduler comparison against existing smoke data with:
+
+```bash
+python -m relay.scheduler_benchmark --csv results/smoke_fixed.csv
+```
+
 Generation uses request-local citation aliases (`[S1]`, `[S2]`, …). Validated aliases resolve back to
 the exact stable chunk IDs and full PDF metadata before an answer is released.
 
@@ -83,10 +119,11 @@ Index data is written to `data/chunks.jsonl`; request traces are appended to `lo
 ## Architecture behavior
 
 - `fast`: shared retrieval, heuristic pre-gate, one grounded generation call, deterministic citation traceability check.
-- `verified`: the fast path plus an independent structured semantic-verification call. It refuses failed drafts. One bounded revision can be enabled in `RelayConfig`, but is off by default.
+- `verified`: the fast path plus independent semantic verification. A `revise` decision permits exactly one correction and re-verification; failure remains closed.
 - `adaptive`: uses the verified simple path normally. Transparent complexity rules route comparisons/multi-part/long questions through one planning call and bounded retrieval expansion before generation and verification.
 
 All strategies receive the same `HybridRetriever` instance and retrieval configuration. BM25 and local Sentence Transformers rankings are combined with reciprocal-rank fusion. Dense vectors use NumPy cosine similarity; no vector database is involved.
+Questions naming two or more library papers receive per-paper retrieval coverage before fusion, so a cross-paper answer cannot be generated from one paper's passages alone.
 
 ## Deliberate limitations
 

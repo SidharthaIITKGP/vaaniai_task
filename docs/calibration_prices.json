@@ -1,0 +1,8 @@
+{
+  "model": "openai/gpt-oss-20b",
+  "source": "https://console.groq.com/docs/models",
+  "checked_date": "2026-11-13",
+  "input_usd_per_million": 0.075,
+  "output_usd_per_million": 0.30,
+  "interpretation": "Public list-price estimates only; not actual free-tier charges."
+}

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
+from pathlib import Path
 from .config import RelayConfig
 from .ingestion import ingest, load_chunks
 from .pipeline import RAGPipeline
@@ -19,7 +21,14 @@ def index_command(config: RelayConfig) -> int:
 
 
 async def ask_command(args: argparse.Namespace, config: RelayConfig) -> int:
+    if args.deployment:
+        deployment = json.loads(Path(args.deployment).read_text())
+        args.architecture = deployment['architecture']
+        config.index_override = Path(deployment['index'])
+        config.retrieval.top_k = deployment['top_k']
     config.intent_router.mode = args.intent_router
+    config.provider.scheduler.request_deadline_seconds = args.queue_deadline
+    config.total_request_deadline_seconds = args.total_deadline
     provider = GroqProvider(config.provider, env_path=config.root / ".env")
     def build_retriever():
         return HybridRetriever(load_chunks(config.index_path), config.retrieval)
@@ -54,9 +63,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("index", help="extract and index the three research PDFs")
     ask = sub.add_parser("ask", help="ask a question")
-    ask.add_argument("--architecture", choices=("fast", "verified", "adaptive"), required=True)
+    selection = ask.add_mutually_exclusive_group(required=True)
+    selection.add_argument("--architecture", choices=("fast", "verified", "adaptive"))
+    selection.add_argument('--deployment', help='Measured configuration from python -m relay.finalize')
     ask.add_argument("--intent-router", choices=("rules", "llm", "hybrid"), default="hybrid")
     ask.add_argument("--question", required=True)
+    ask.add_argument("--queue-deadline", type=float, default=3.0)
+    ask.add_argument("--total-deadline", type=float, default=10.0)
     return parser
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 from collections.abc import Callable
@@ -32,6 +33,35 @@ class RAGPipeline:
         retriever = self._retriever() if callable(self._retriever) else self._retriever
         return self.strategies[self.architecture](retriever, self.provider, self.config)
 
+    async def _execute(self, question: str, trace: RequestTrace) -> PipelineResult:
+        routing = await self.router.route(
+            question, request_id=trace.request_id, architecture=self.architecture)
+        trace.detected_intent = routing.intent
+        trace.routing_method = routing.method
+        trace.routing_reason = routing.reason
+        trace.routing_complexity = routing.complexity
+        trace.routing_relevant_papers = routing.relevant_papers
+        trace.routing_latency_ms = routing.latency_ms
+        trace.routing_model_calls = routing.model_calls
+        trace.routing_error = routing.error
+        trace.routing_schema_error = routing.schema_error
+        trace.routing_fallback_used = routing.fallback_used
+        if routing.model_calls == 0:
+            trace.routing_tokens_in = 0
+            trace.routing_tokens_out = 0
+        if routing.provider_response is not None:
+            trace.add_call("intent_routing", routing.provider_response)
+            trace.routing_tokens_in = routing.provider_response.usage.input_tokens
+            trace.routing_tokens_out = routing.provider_response.usage.output_tokens
+        elif routing.model_calls:
+            trace.add_failed_call("intent_routing", routing.provider_error)
+        if routing.intent != "paper_question":
+            status = "conversation" if routing.intent == "conversation" else "out_of_scope"
+            trace.final_status = status
+            return PipelineResult(trace.request_id, self.architecture, status,
+                                  routing.response or "", metrics=trace.metrics())
+        return await self._strategy().run(question, trace)
+
     async def run(self, question: str) -> PipelineResult:
         if not question or not question.strip():
             raise ValueError("question cannot be empty")
@@ -39,35 +69,24 @@ class RAGPipeline:
                              routing_mode=self.config.intent_router.mode)
         started = time.perf_counter()
         try:
-            routing = await self.router.route(question)
-            trace.detected_intent = routing.intent
-            trace.routing_method = routing.method
-            trace.routing_reason = routing.reason
-            trace.routing_complexity = routing.complexity
-            trace.routing_relevant_papers = routing.relevant_papers
-            trace.routing_latency_ms = routing.latency_ms
-            trace.routing_model_calls = routing.model_calls
-            trace.routing_error = routing.error
-            trace.routing_schema_error = routing.schema_error
-            trace.routing_fallback_used = routing.fallback_used
-            if routing.model_calls == 0:
-                trace.routing_tokens_in = 0
-                trace.routing_tokens_out = 0
-            if routing.provider_response is not None:
-                trace.add_call("intent_routing", routing.provider_response)
-                trace.routing_tokens_in = routing.provider_response.usage.input_tokens
-                trace.routing_tokens_out = routing.provider_response.usage.output_tokens
-            elif routing.model_calls:
-                trace.add_failed_call("intent_routing", routing.provider_error)
-            if routing.intent != "paper_question":
-                status = "conversation" if routing.intent == "conversation" else "out_of_scope"
-                trace.final_status = status
-                result = PipelineResult(trace.request_id, self.architecture, status,
-                                        routing.response or "", metrics=trace.metrics())
+            if self.config.total_request_deadline_seconds is not None:
+                async with asyncio.timeout(self.config.total_request_deadline_seconds):
+                    result = await self._execute(question, trace)
             else:
-                result = await self._strategy().run(question, trace)
+                result = await self._execute(question, trace)
+        except TimeoutError:
+            trace.final_status = "capacity_timeout"
+            result = PipelineResult(
+                trace.request_id, self.architecture, "capacity_timeout", "",
+                retrieved_chunk_ids=trace.retrieved_chunk_ids, metrics=trace.metrics(),
+                error="Total interactive request deadline exceeded",
+                route=trace.route, route_reason=trace.route_reason)
         except (RateLimitError, ProviderError) as exc:
-            status = "rate_limited" if isinstance(exc, RateLimitError) else "provider_error"
+            status = (
+                "capacity_unavailable" if isinstance(exc, RateLimitError)
+                and (exc.rate_limit_type or "").startswith("local_")
+                else "rate_limited" if isinstance(exc, RateLimitError) else "provider_error"
+            )
             trace.provider_error = {"type": type(exc).__name__, "message": str(exc),
                                     "status_code": exc.status_code, "retry_after": exc.retry_after,
                                     "rate_limit_type": exc.rate_limit_type,

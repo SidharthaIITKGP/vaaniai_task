@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from relay.config import ProviderConfig
-from relay.providers.base import RateLimitError
+from relay.providers.base import ProviderError, RateLimitError, TruncatedResponseError
 from relay.providers.groq_provider import GroqProvider
 
 
@@ -84,3 +84,78 @@ async def test_strict_json_schema_payload(monkeypatch):
     assert response_format["json_schema"]["schema"]["additionalProperties"] is False
     assert captured["stream"] is False and captured["max_completion_tokens"] == 300
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_stage_specific_generation_cap(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test-only")
+    captured = {}
+    async def handler(request):
+        captured.update(json.loads(request.content))
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}],
+            "usage": {"prompt_tokens": 3, "completion_tokens": 1}}, request=request)
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    await GroqProvider(client=client).generate([{"role": "user", "content": "test"}], stage="generation")
+    assert captured["max_completion_tokens"] == 640
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_http_400_refunds_token_reservation(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test-only")
+    config = ProviderConfig()
+    config.scheduler.tpm_limit = 1000
+    config.scheduler.safety_margin = 1.0
+    async def handler(request):
+        return httpx.Response(400, text="invalid schema", request=request)
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = GroqProvider(config, client=client)
+    with pytest.raises(ProviderError):
+        await provider.generate([{"role": "user", "content": "test"}], max_output_tokens=100)
+    assert provider.scheduler.snapshot()["local_tpm_remaining"] > 990
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_network_timeout_preserves_uncertain_reservation(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test-only")
+    config = ProviderConfig()
+    config.scheduler.tpm_limit = 1000
+    config.scheduler.safety_margin = 1.0
+    async def handler(request):
+        raise httpx.ReadTimeout("uncertain", request=request)
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = GroqProvider(config, client=client)
+    with pytest.raises(ProviderError, match="uncertain token consumption"):
+        await provider.generate([{"role": "user", "content": "test"}], max_output_tokens=100)
+    assert provider.scheduler.snapshot()["local_tpm_remaining"] < 950
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_truncated_generation_is_detected(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test-only")
+    body = "\n\n".join((
+        'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":"length"}]}',
+        'data: {"choices":[],"usage":{"prompt_tokens":4,"completion_tokens":10}}',
+        "data: [DONE]",
+    ))
+    async def handler(request):
+        return httpx.Response(200, text=body, request=request)
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    with pytest.raises(TruncatedResponseError):
+        await GroqProvider(client=client).generate_streaming(
+            [{"role": "user", "content": "test"}], stage="generation")
+    await client.aclose()
+
+
+def test_verifier_uses_compact_three_field_schema(retriever, config):
+    from relay.verification import verify_answer
+    from conftest import MockProvider
+    import asyncio
+    evidence = retriever.retrieve("attention")[:1]
+    provider = MockProvider([{"decision": "return", "unsupported_claims": [], "reason": "supported"}])
+    asyncio.run(verify_answer(provider, "question", "answer [S1]", evidence))
+    schema = provider.kwargs_seen[0]["json_schema"]
+    assert schema["required"] == ["decision", "unsupported_claims", "reason"]
+    assert set(schema["properties"]) == {"decision", "unsupported_claims", "reason"}

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import csv
 
-from relay.evaluate import FIELDS, RecordingRetriever, build_run_plan, completed_keys, result_row
+from relay.evaluate import (FIELDS, FORMAL_15, SMOKE_6, RecordingRetriever,
+                            build_run_plan, completed_keys, result_row)
 from relay.evaluation_questions import QUESTIONS
 from relay.schemas import PipelineResult
 
@@ -12,6 +13,8 @@ def test_fixed_question_matrix_has_30_unique_questions_and_90_runs():
     assert len({question.question_id for question in QUESTIONS}) == 30
     plan = build_run_plan(None, ("fast", "verified", "adaptive"))
     assert len(plan) == 90
+    assert len(build_run_plan(SMOKE_6, ("fast", "verified", "adaptive"))) == 18
+    assert len(build_run_plan(FORMAL_15, ("fast", "verified", "adaptive"))) == 45
 
 
 def test_recording_retriever_captures_passage_metadata(retriever):
@@ -51,6 +54,9 @@ def test_resume_retries_only_failed_provider_rows(tmp_path):
                          "intent_router": "hybrid", "status": "ok"})
         writer.writerow({"question_id": "T2", "architecture": "fast",
                          "intent_router": "hybrid", "status": "rate_limited"})
+        writer.writerow({"question_id": "T3", "architecture": "fast",
+                         "intent_router": "hybrid", "status": "capacity_unavailable"})
     done = completed_keys(path, "hybrid")
     assert ("T1", "fast", "hybrid") in done
     assert ("T2", "fast", "hybrid") not in done
+    assert ("T3", "fast", "hybrid") not in done

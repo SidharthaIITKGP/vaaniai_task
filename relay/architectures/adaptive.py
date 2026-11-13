@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 
 from ..instrumentation import RequestTrace, Timer
-from ..retrieval import merge_passages
+from ..retrieval import comparison_paper_ids, merge_passages_with_coverage
 from ..schemas import PipelineResult
 from .base import REFUSAL
 from .verified import VerifiedRAG
@@ -43,7 +43,8 @@ class AdaptiveRAG(VerifiedRAG):
             trace.pipeline_failure_stage = "planning"
             data, response = await self.provider.generate_json(
                 messages, json_schema=schema, schema_name="retrieval_plan", strict=True,
-                max_output_tokens=600, reasoning_effort="low")
+                reasoning_effort="low", stage="planning",
+                request_id=trace.request_id, architecture=self.name)
         trace.planning_ms = timer.elapsed_ms
         trace.add_call("planning", response)
         trace.pipeline_failure_stage = None
@@ -62,7 +63,8 @@ class AdaptiveRAG(VerifiedRAG):
         groups = [initial]
         with Timer() as timer:
             groups.extend(self.retriever.retrieve(item) for item in queries)
-            evidence = merge_passages(groups, self.config.retrieval.top_k)
+            evidence = merge_passages_with_coverage(
+                groups, self.config.retrieval.top_k, comparison_paper_ids(query))
         trace.retrieval_ms = (trace.retrieval_ms or 0) + timer.elapsed_ms
         trace.retrieved_chunk_ids = [p.chunk.chunk_id for p in evidence]
         if not evidence:

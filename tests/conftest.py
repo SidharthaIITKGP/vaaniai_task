@@ -28,9 +28,13 @@ class MockProvider(ModelProvider):
     def __init__(self, responses: list[Any]):
         self.responses = list(responses)
         self.calls: list[str] = []
+        self.messages_seen: list[list[dict[str, str]]] = []
+        self.kwargs_seen: list[dict[str, Any]] = []
 
     async def generate(self, messages: list[dict[str, str]], **kwargs: Any) -> ProviderResponse:
         self.calls.append("generate")
+        self.messages_seen.append(messages)
+        self.kwargs_seen.append(kwargs)
         value = self.responses.pop(0)
         if isinstance(value, Exception):
             raise value
@@ -38,6 +42,8 @@ class MockProvider(ModelProvider):
 
     async def generate_streaming(self, messages: list[dict[str, str]], **kwargs: Any) -> ProviderResponse:
         self.calls.append("generate_streaming")
+        self.messages_seen.append(messages)
+        self.kwargs_seen.append(kwargs)
         value = self.responses.pop(0)
         if isinstance(value, Exception):
             raise value
@@ -45,10 +51,14 @@ class MockProvider(ModelProvider):
 
     async def stream(self, messages: list[dict[str, str]], **kwargs: Any) -> AsyncIterator[str]:
         self.calls.append("stream")
+        self.messages_seen.append(messages)
+        self.kwargs_seen.append(kwargs)
         yield str(self.responses.pop(0))
 
     async def generate_json(self, messages: list[dict[str, str]], **kwargs: Any):
         self.calls.append("json")
+        self.messages_seen.append(messages)
+        self.kwargs_seen.append(kwargs)
         value = self.responses.pop(0)
         if isinstance(value, Exception):
             raise value

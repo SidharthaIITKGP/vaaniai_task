@@ -50,6 +50,15 @@ class ProviderResponse:
     rate_limit_type: str | None = None
     retry_after_seconds: float | None = None
     rate_limit_headers: dict[str, str] = field(default_factory=dict)
+    estimated_input_tokens: int | None = None
+    reserved_output_tokens: int | None = None
+    reserved_total_tokens: int | None = None
+    local_rpm_remaining: int | None = None
+    local_tpm_remaining: float | None = None
+    scheduler_wait_reason: str | None = None
+    pipeline_request_id: str | None = None
+    architecture: str | None = None
+    stage: str | None = None
     raw: dict[str, Any] | None = None
 
 

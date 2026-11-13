@@ -22,6 +22,14 @@ class ProviderConfig:
     max_output_tokens: int = 1200
     timeout_seconds: float = 60.0
     scheduler: "SchedulerConfig" = field(default_factory=lambda: SchedulerConfig())
+    stage_output_tokens: dict[str, int] = field(default_factory=lambda: {
+        "routing": 256,
+        "planning": 384,
+        "generation": 640,
+        "verification": 640,
+        "revision": 640,
+        "revision_verification": 640,
+    })
 
 
 @dataclass(slots=True)
@@ -32,12 +40,13 @@ class SchedulerConfig:
     safety_margin: float = 0.80
     max_queue_size: int = 8
     request_deadline_seconds: float = 240.0
+    interactive_queue_deadline_seconds: float = 3.0
 
 
 @dataclass(slots=True)
 class IntentRouterConfig:
     mode: str = "hybrid"
-    max_output_tokens: int = 384
+    max_output_tokens: int = 256
     reasoning_effort: str = "low"
 
 
@@ -49,13 +58,16 @@ class RelayConfig:
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
     provider: ProviderConfig = field(default_factory=ProviderConfig)
     intent_router: IntentRouterConfig = field(default_factory=IntentRouterConfig)
-    enable_revision: bool = False
+    enable_revision: bool = True
     max_revisions: int = 1
     max_retrieval_expansions: int = 4
+    total_request_deadline_seconds: float | None = None
+    verification_evidence_mode: str = "cited"
+    index_override: Path | None = None
 
     @property
     def index_path(self) -> Path:
-        return self.root / "data" / "chunks.jsonl"
+        return self.index_override or self.root / "data" / "chunks.jsonl"
 
     @property
     def log_path(self) -> Path:
