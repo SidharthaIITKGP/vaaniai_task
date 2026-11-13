@@ -55,6 +55,7 @@ class BudgetedGroqProvider(GroqProvider):
 FIELDS = (
     'evaluation_config_id', 'input_file', 'plan_order',
     'origin_evaluation_config_id', 'quota_profile',
+    'evidence_character_budget','evidence_source_characters','evidence_rendered_characters','evidence_shortened',
     'stage_admission_attempts', 'confirmed_provider_dispatches',
     "configuration",
     "run_started_at", "run_completed_at", "execution_order", "random_seed",
@@ -253,6 +254,7 @@ def result_row(question: EvaluationQuestion, architecture: str, router_mode: str
         "total_input_tokens", "total_output_tokens",
         "queue_wait_ms", "provider_status_code", "rate_limit_type", "retry_after_seconds",
         'stage_admission_attempts', 'confirmed_provider_dispatches',
+        'evidence_character_budget','evidence_source_characters','evidence_rendered_characters','evidence_shortened',
     ):
         row[field] = metrics.get(field)
     return row
@@ -339,6 +341,7 @@ async def run(args: argparse.Namespace) -> int:
     config.provider.scheduler.max_provider_cooldown_seconds = args.max_cooldown
     config.provider.scheduler.state_path = state_path
     config.verification_evidence_mode = args.verification_evidence
+    config.evidence_character_budget = args.evidence_character_budget
     manifest = {
         'configuration': args.configuration,
         'architectures': architectures, 'questions': sorted(q.question_id for q, _ in plan),
@@ -356,6 +359,7 @@ async def run(args: argparse.Namespace) -> int:
             'routing', 'verification_evidence', 'revision', 'mode', 'rpm', 'tpm', 'safety_margin')}
     manifest['evaluation_configuration'].update({
         'structured_grounding': config.provider.structured_grounding,
+        'evidence_character_budget': config.evidence_character_budget,
         'verifier_format_retries': 1, 'verifier_retry_output_tokens': 1024,
         'reasoning_effort': config.provider.reasoning_effort,
         'stage_output_tokens': config.provider.stage_output_tokens,
@@ -567,6 +571,8 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--index", help="Explicit variant index; never rebuilds the original")
     result.add_argument("--top-k", type=int, default=5)
     result.add_argument('--configuration', help='Retrieval candidate label for matched comparisons')
+    result.add_argument('--evidence-character-budget', type=int,
+                        help='Common evidence text budget; contiguous query-focused excerpts, logged in manifest')
     result.add_argument('--resume-from', action='append', default=[], help='Immutable earlier CSV with matching manifest')
     result.add_argument('--repair-from', action='append', default=[],
                         help='Preserve old successes; retry failed cases after explicit RAG fixes. Ineligible for winner selection.')

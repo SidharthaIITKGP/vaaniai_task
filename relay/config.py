@@ -67,6 +67,7 @@ class RelayConfig:
     total_request_deadline_seconds: float | None = None
     verification_evidence_mode: str = "cited"
     index_override: Path | None = None
+    evidence_character_budget: int | None = None
 
     @property
     def index_path(self) -> Path:

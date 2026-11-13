@@ -52,6 +52,13 @@ class BaseArchitecture(ABC):
                        trace: RequestTrace, stage: str = "generation") -> tuple[str, ProviderResponse]:
         aliases = build_alias_mapping(evidence)
         trace.citation_alias_mapping = aliases
+        rendered = format_evidence(evidence, aliases, character_budget=self.config.evidence_character_budget,
+                                   question=question)
+        trace.evidence_character_budget = self.config.evidence_character_budget
+        trace.evidence_source_characters = sum(len(p.chunk.text) for p in evidence)
+        trace.evidence_rendered_characters = len(rendered)
+        trace.evidence_shortened = bool(self.config.evidence_character_budget and
+            trace.evidence_source_characters > self.config.evidence_character_budget)
         messages = [
             {"role": "system", "content": (
                 "Answer only from the supplied evidence. Cite every factual claim using only the short aliases "
@@ -61,7 +68,7 @@ class BaseArchitecture(ABC):
                 "that the evidence does not establish. Follow the structured response schema when supplied. "
                 f"Otherwise, if unsupported, respond exactly: {REFUSAL}"
             )},
-            {"role": "user", "content": f"QUESTION:\n{question}\n\nEVIDENCE:\n{format_evidence(evidence, aliases)}"},
+            {"role": "user", "content": f"QUESTION:\n{question}\n\nEVIDENCE:\n{rendered}"},
         ]
         trace.pipeline_failure_stage = stage
         response = await self.provider.generate_streaming(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 from typing import Literal
+import re
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -17,16 +18,29 @@ class VerifierOutput(BaseModel):
     reason: str
 
 
+def evidence_window(text: str, question: str, limit: int) -> str:
+    """A contiguous verbatim excerpt; it never synthesizes or joins new claims."""
+    if len(text) <= limit:
+        return text
+    terms = {t for t in re.findall(r'\w+', question.lower()) if len(t) > 3}
+    starts = sorted({*range(0, max(1, len(text)-limit+1), max(80, limit//3)),len(text)-limit})
+    best = max(starts, key=lambda start: len(terms & set(re.findall(r'\w+', text[start:start+limit].lower()))))
+    return text[best:best+limit]
+
+
 def format_evidence(passages: list[RetrievedPassage],
-                    aliases: dict[str, str] | None = None) -> str:
+                    aliases: dict[str, str] | None = None, *,
+                    character_budget: int | None = None, question: str = '') -> str:
     aliases = aliases or build_alias_mapping(passages)
     chunk_to_alias = {chunk_id: alias for alias, chunk_id in aliases.items()}
     blocks = []
     for item in passages:
         c = item.chunk
+        text = (evidence_window(c.text, question, max(1, character_budget//len(passages)))
+                if character_budget and sum(len(p.chunk.text) for p in passages) > character_budget else c.text)
         blocks.append(
             f"[{chunk_to_alias[c.chunk_id]}] {c.paper_title}; arXiv {c.paper_id}{c.arxiv_version}; "
-            f"PDF p.{c.page_number}; {c.section or 'section unknown'}\n{c.text}"
+            f"PDF p.{c.page_number}; {c.section or 'section unknown'}\n{text}"
         )
     return "\n\n---\n\n".join(blocks)
 

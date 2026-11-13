@@ -81,6 +81,10 @@ class RequestTrace:
     provider_error: dict[str, Any] | None = None
     draft_answer: str | None = None
     revised_draft: str | None = None
+    evidence_character_budget: int | None = None
+    evidence_source_characters: int | None = None
+    evidence_rendered_characters: int | None = None
+    evidence_shortened: bool = False
 
     def add_call(self, stage: str, response: ProviderResponse) -> None:
         for previous in response.prior_attempts:

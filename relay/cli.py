@@ -26,6 +26,7 @@ async def ask_command(args: argparse.Namespace, config: RelayConfig) -> int:
         args.architecture = deployment['architecture']
         config.index_override = Path(deployment['index'])
         config.retrieval.top_k = deployment['top_k']
+        config.evidence_character_budget = deployment.get('evidence_character_budget')
     config.intent_router.mode = args.intent_router
     config.provider.scheduler.request_deadline_seconds = args.queue_deadline
     config.total_request_deadline_seconds = args.total_deadline
