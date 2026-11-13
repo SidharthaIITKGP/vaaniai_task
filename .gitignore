@@ -1,0 +1,54 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Python environments and bytecode
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test, coverage, and tooling caches
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.tox/
+
+# Build and packaging output
+build/
+dist/
+*.egg-info/
+
+# Generated RAG artifacts and experiment output
+data/
+logs/
+results/
+*.csv
+*.npy
+*.npz
+
+# Locally downloaded research papers
+research paper/
+Research Paper/
+research papers/
+Research Papers/
+*.pdf
+
+# Local model/download caches
+.cache/
+models/
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
