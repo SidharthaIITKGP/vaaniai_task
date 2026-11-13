@@ -1,0 +1,8 @@
+{
+  "reason": "Provider quota exhausted",
+  "rate_limit_type": "provider_tpd",
+  "retry_not_before_epoch": 1794589354.2875164,
+  "retry_condition": "Wait until Retry-After expires; admission will recheck quota. If no reset was provided, confirm provider quota before resuming.",
+  "earliest_retry_utc": "2026-11-13T17:02:34.287516+00:00",
+  "earliest_retry_condition": "Not before Retry-After/reset; quota is rechecked at admission."
+}

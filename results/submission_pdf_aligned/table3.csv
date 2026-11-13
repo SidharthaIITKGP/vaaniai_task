@@ -1,0 +1,4 @@
+Setting,Questions asked,Correct and cited %,Wrong %,Correctly refused %,Tokens per answer,First token p50 / p95 (ms),Total time p50 / p95 (ms)
+300 whitespace tokens; top-K 3; re-rank no,not measured,not measured,not measured,not measured,not measured,not measured,not measured
+500 whitespace tokens; top-K 5; re-rank no,not measured,not measured,not measured,not measured,not measured,not measured,not measured
+800 whitespace tokens; top-K 7; re-rank no,not measured,not measured,not measured,not measured,not measured,not measured,not measured

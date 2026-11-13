@@ -87,10 +87,7 @@ class RAGPipeline:
                 and (exc.rate_limit_type or "").startswith("local_")
                 else "rate_limited" if isinstance(exc, RateLimitError) else "provider_error"
             )
-            trace.provider_error = {"type": type(exc).__name__, "message": str(exc),
-                                    "status_code": exc.status_code, "retry_after": exc.retry_after,
-                                    "rate_limit_type": exc.rate_limit_type,
-                                    "queue_wait_ms": exc.queue_wait_ms}
+            trace.provider_error = exc.details()
             if trace.pipeline_failure_stage:
                 trace.add_failed_call(trace.pipeline_failure_stage, exc)
             trace.final_status = status

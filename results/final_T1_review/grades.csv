@@ -1,0 +1,4 @@
+review_id,request_id,question_id,accuracy,citation_grounding,correct_refusal,reviewer,paper_pages_checked,rationale
+226d381c4846281e,7766851b-49c8-4f91-a50b-090051580847,T1,1,1,,Codex independent PDF inspection,1706.03762v7 PDF page 4,Equation 1 and footnote 4 establish the formula variance growth and small softmax gradients. S1 resolves to that passage.
+5a4d9ce7d7406533,d55b6ac0-5a33-4351-b606-ef49cbe53929,T1,0,0,,Codex independent PDF inspection,1706.03762v7 PDF page 4,Refused an answerable question and released no source alias. Does not explain the mechanism.
+e5057dd6a9d3d3c8,330d87cf-2b10-46fd-b8f0-e8c206745680,T1,1,1,,Codex independent PDF inspection,1706.03762v7 PDF page 4,Equation 1 and footnote 4 support the formula variance and gradient explanation. S1 resolves to that passage.

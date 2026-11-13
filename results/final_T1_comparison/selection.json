@@ -1,0 +1,10 @@
+{
+  "winner": null,
+  "complete": false,
+  "policy": "lexicographic accuracy, citation grounding, correct refusal, reliability, input tokens, latency",
+  "reason": "Complete independent reviews and equal question coverage required",
+  "inputs": [
+    "results/final_bounded_T1.csv"
+  ],
+  "grades": "results/final_T1_review/grades.csv"
+}

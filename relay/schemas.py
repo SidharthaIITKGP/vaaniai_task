@@ -59,6 +59,7 @@ class ProviderResponse:
     pipeline_request_id: str | None = None
     architecture: str | None = None
     stage: str | None = None
+    prior_attempts: list[dict[str, Any]] = field(default_factory=list)
     raw: dict[str, Any] | None = None
 
 

@@ -17,6 +17,11 @@ The existing `.env` is loaded automatically. Do not commit it.
 
 ## Experiment 1: architecture quality before optimization
 
+For targeted repair of the recovered 52/54 snapshot, see
+[FORMAL18_REPAIRS.md](FORMAL18_REPAIRS.md). The complete comparison below uses a
+fresh output under the corrected implementation; mixed-version repair results
+are diagnostic and cannot select a winner.
+
 The `formal18` set includes 13 answerable paper/comparison questions and all five
 unsupported paper-related questions. Every candidate receives the same question
 set, model, retrieval configuration, routing policy, revision limit, and scheduler.
@@ -24,8 +29,8 @@ set, model, retrieval configuration, routing policy, revision limit, and schedul
 ```bash
 python -m relay.evaluate --subset formal18 --workers 1 --mode end-to-end \
   --max-model-calls 200 --wall-seconds 3600 \
-  --output results/architecture_formal18.csv
-python -m relay.experiment_review packet --input results/architecture_formal18.csv \
+  --max-cooldown 60 --output results/architecture_formal18_v2_full.csv
+python -m relay.experiment_review packet --input results/architecture_formal18_v2_full.csv \
   --output results/architecture_review
 ```
 
@@ -37,7 +42,7 @@ service outcomes, not evidence refusals. Do not copy semantic-verifier verdicts.
 Check each claim and its cited passage, omissions, numerical values, and units.
 
 ```bash
-python -m relay.experiment_review compare --input results/architecture_formal18.csv \
+python -m relay.experiment_review compare --input results/architecture_formal18_v2_full.csv \
   --grades results/architecture_review/grades.csv --output results/architecture_selection
 ```
 

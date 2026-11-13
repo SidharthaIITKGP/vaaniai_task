@@ -1,0 +1,16 @@
+Scenario,Real or stand-in,Succeeded %,Rate-limited %,Timed out or given up %,Retries per request,Peak queue length,Tokens per answer,Cost per 1000 answers (USD estimated)
+steady,real,100.0,0.0,0.0,0.0,not measured,149.2,not measured
+burst_5,real,100.0,0.0,0.0,0.0,not measured,153.0,not measured
+burst_10,real,100.0,0.0,0.0,0.0,not measured,152.1,not measured
+burst_100,real,32.0,68.0,0.0,0.0,not measured,150.03,not measured
+quality_smoke_T1,real,100.0,0.0,0.0,0.0,not measured,3760.0,not measured
+burst_retries0,stand-in,6.7,93.3,0.0,0.0,8.0,147.88,0.025462
+burst_retries2,stand-in,6.7,93.3,0.0,0.0,8.0,147.88,0.025462
+daily_exhausted_retries0,stand-in,0.0,100.0,0.0,0.0,0.0,not measured,not measured
+daily_exhausted_retries2,stand-in,0.0,100.0,0.0,0.0,0.0,not measured,not measured
+halved_rpm_retries0,stand-in,62.5,0.0,37.5,0.0,3.0,150.36,0.026208
+halved_rpm_retries2,stand-in,66.7,12.5,20.8,1.55,8.0,150.32,0.026198
+steady_retries0,stand-in,100.0,0.0,0.0,0.0,0.0,150.88,0.026363
+steady_retries2,stand-in,100.0,0.0,0.0,0.0,0.0,150.88,0.026363
+sustained_overload_retries0,stand-in,21.3,12.7,66.0,0.0,8.0,150.66,0.026297
+sustained_overload_retries2,stand-in,21.3,46.3,32.3,0.78,8.0,150.68,0.026304

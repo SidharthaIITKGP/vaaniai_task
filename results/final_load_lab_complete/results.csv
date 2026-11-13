@@ -1,0 +1,11 @@
+source,scenario,architecture,requests,completed,outcomes_json,retry_total,max_queue_length,input_tokens,output_tokens,estimated_cost_usd,latency_ms_p50,latency_ms_p95,latency_ms_p99,queue_wait_ms_p50,queue_wait_ms_p95,queue_wait_ms_p99,processing_ms_p50,processing_ms_p95,processing_ms_p99,max_admission_retries
+simulated,steady,standalone_llm,120,120,"{""ok"": 120}",0,0,10080,8025,0.0031635,815.0,1673.3019999999997,1832.0,0.0,0.0,0.0,815.0,1673.3019999999997,1832.0,0
+simulated,steady,standalone_llm,120,120,"{""ok"": 120}",0,0,10080,8025,0.0031635,815.0,1673.3019999999997,1832.0,0.0,0.0,0.0,815.0,1673.3019999999997,1832.0,2
+simulated,burst,standalone_llm,120,8,"{""ok"": 8, ""queue_full"": 112}",0,8,672,511,0.0002037,831.625,971.197,984.1834,0.0,0.0,0.0,831.625,971.197,984.1834,0
+simulated,burst,standalone_llm,120,8,"{""ok"": 8, ""queue_full"": 112}",0,8,672,511,0.0002037,831.625,971.197,984.1834,0.0,0.0,0.0,831.625,971.197,984.1834,2
+simulated,sustained_overload,standalone_llm,600,128,"{""ok"": 128, ""admission_timeout"": 396, ""queue_full"": 76}",0,8,10752,8532,0.003366,3625.4049999999997,10982.2515,11808.6558,2000.0,10000.0,10000.0,826.15,1669.5,2315.9900000000025,0
+simulated,sustained_overload,standalone_llm,600,128,"{""ok"": 128, ""admission_timeout"": 194, ""queue_full"": 278}",468,8,10752,8535,0.0033669,2982.2349999999997,31063.786999999997,31745.539999999997,2000.0,30000.0,30000.0,815.0,1633.2469999999992,2315.9900000000025,2
+simulated,halved_rpm,standalone_llm,120,75,"{""ok"": 75, ""admission_timeout"": 45}",0,3,6300,4977,0.0019656,9802.759999999998,10745.54,10832.0,9000.0,9000.0,9000.0,826.15,1745.54,1832.0,0
+simulated,halved_rpm,standalone_llm,120,80,"{""ok"": 80, ""queue_full"": 15, ""admission_timeout"": 25}",186,8,6720,5306,0.0020958,27727.739999999998,31189.99,31761.026799999992,27000.0,30000.0,30000.0,815.0,1574.9009999999996,1971.229999999996,2
+simulated,daily_exhausted,standalone_llm,120,0,"{""daily_exhausted"": 120}",0,0,0,0,0.0,,,,,,,,,,0
+simulated,daily_exhausted,standalone_llm,120,0,"{""daily_exhausted"": 120}",0,0,0,0,0.0,,,,,,,,,,2

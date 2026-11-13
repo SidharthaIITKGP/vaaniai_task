@@ -1,0 +1,64 @@
+[
+  {
+    "review_id": "226d381c4846281e",
+    "question_id": "T1",
+    "question": "Explain scaled dot-product attention and why the dot product is divided by √dₖ.",
+    "answer": "Scaled dot‑product attention computes a weighted sum of the value vectors V for each query q.  \nGiven matrices of queries Q, keys K and values V, the attention output is\n\n\\[\n\\text{Attention}(Q,K,V)=\\operatorname{softmax}\\!\\left(\\frac{QK^{\\top}}{\\sqrt{d_k}}\\right)V ,\n\\]\n\nwhere \\(d_k\\) is the dimensionality of the key (and query) vectors [S1].\n\nThe dot products \\(q\\!\\cdot\\!k\\) can grow large when the dimensionality \\(d_k\\) is high, because if the components of \\(q\\) and \\(k\\) are independent random variables with mean 0 and variance 1, the variance of the dot product is \\(d_k\\) [S1]. Large dot‑product magnitudes push the softmax into its extreme tails, producing very small gradients and slowing learning. Dividing by \\(\\sqrt{d_k}\\) scales the dot products to have unit variance, keeping the softmax in a regime with stable gradients and improving training stability [S1].",
+    "citations": [
+      {
+        "chunk_id": "1706.03762-p004-c5d0a558112f0ab4",
+        "paper_id": "1706.03762",
+        "paper_title": "Attention Is All You Need",
+        "arxiv_version": "v7",
+        "filename": "1706.03762v7 (1).pdf",
+        "pdf_page": 4,
+        "section": "2 Background",
+        "passage": "Scaled Dot-Product Attention Multi-Head Attention\n\nFigure 2: (left) Scaled Dot-Product Attention. (right) Multi-Head Attention consists of several\nattention layers running in parallel.\n\nof the values, where the weight assigned to each value is computed by a compatibility function of the\nquery with the corresponding key.\n\n3.2.1 Scaled Dot-Product Attention\n\nWe call our particular attention \"Scaled Dot-Product Attention\" (Figure 2). The input consists of\nqueries and keys of dimension dk, and values of dimension dv. We compute the dot products of the\nquery with all keys, divide each by √dk, and apply a softmax function to obtain the weights on the\nvalues.\n\nIn practice, we compute the attention function on a set of queries simultaneously, packed together\ninto a matrix Q. The keys and values are also packed together into matrices K and V . We compute\nthe matrix of outputs as:\n\nAttention(Q, K, V ) = softmax(QKT )V (1) √dk\n\nThe two most commonly used attention functions are additive attention [2], and dot-product (multiplicative) attention. Dot-product attention is identical to our algorithm, except for the scaling factor\nof √dk1 . Additive attention computes the compatibility function using a feed-forward network with\na single hidden layer. While the two are similar in theoretical complexity, dot-product attention is\nmuch faster and more space-efficient in practice, since it can be implemented using highly optimized\nmatrix multiplication code.\n\nWhile for small values of dk the two mechanisms perform similarly, additive attention outperforms\ndot product attention without scaling for larger values of dk [3]. We suspect that for large values of\ndk, the dot products grow large in magnitude, pushing the softmax function into regions where it has\nextremely small gradients 4. To counteract this effect, we scale the dot products by √dk1 .\n\n3.2.2 Multi-Head Attention\n\nInstead of performing a single attention function with dmodel-dimensional keys, values and queries,\nwe found it beneficial to linearly project the queries, keys and values h times with different, learned\nlinear projections to dk, dk and dv dimensions, respectively. On each of these projected versions of\nqueries, keys and values we then perform the attention function in parallel, yielding dv-dimensional\n\n4To illustrate why the dot products get large, assume that the components of q and k are independent random\nvariables with mean 0 and variance 1. Then their dot product, q · k = Pdki=1 qiki, has mean 0 and variance dk.",
+        "retrieval_scores": {
+          "rank": 1,
+          "rrf_score": 0.03278688524590164,
+          "bm25_score": 36.36873947998218,
+          "dense_score": 0.48623991058185795,
+          "bm25_rank": 1,
+          "dense_rank": 1
+        }
+      }
+    ],
+    "instruction": "Check the original PDFs. Do not grade from status or self-verification. Score accuracy and citation_grounding 0 or 1. For unanswerable questions score correct_refusal 0 or 1; otherwise leave it blank. Record pages and specific errors."
+  },
+  {
+    "review_id": "5a4d9ce7d7406533",
+    "question_id": "T1",
+    "question": "Explain scaled dot-product attention and why the dot product is divided by √dₖ.",
+    "answer": "The provided papers do not establish an answer to this question.",
+    "citations": [],
+    "instruction": "Check the original PDFs. Do not grade from status or self-verification. Score accuracy and citation_grounding 0 or 1. For unanswerable questions score correct_refusal 0 or 1; otherwise leave it blank. Record pages and specific errors."
+  },
+  {
+    "review_id": "e5057dd6a9d3d3c8",
+    "question_id": "T1",
+    "question": "Explain scaled dot-product attention and why the dot product is divided by √dₖ.",
+    "answer": "Scaled dot‑product attention computes a weighted sum of the value vectors \\(V\\) for each query \\(q\\).  \nThe weight assigned to each value is obtained by first taking the dot product of the query with every key \\(k\\), scaling the result, and then applying a softmax:\n\n\\[\n\\text{Attention}(Q,K,V)=\\text{softmax}\\!\\left(\\frac{QK^{T}}{\\sqrt{d_{k}}}\\right)V \\quad [S1]\n\\]\n\nThe scaling factor \\(\\sqrt{d_{k}}\\) is used to counteract the tendency of the raw dot products to grow large when the dimensionality \\(d_{k}\\) of the queries and keys is large.  When the components of \\(q\\) and \\(k\\) are independent random variables with mean 0 and variance 1, their dot product has variance \\(d_{k}\\); thus for large \\(d_{k}\\) the dot products can become large in magnitude, pushing the softmax into a region with extremely small gradients \\([S1]\\).  Dividing by \\(\\sqrt{d_{k}}\\) brings the dot‑product values into a range where the softmax remains in a well‑behaved region, improving training stability and performance \\([S1]\\).",
+    "citations": [
+      {
+        "chunk_id": "1706.03762-p004-c5d0a558112f0ab4",
+        "paper_id": "1706.03762",
+        "paper_title": "Attention Is All You Need",
+        "arxiv_version": "v7",
+        "filename": "1706.03762v7 (1).pdf",
+        "pdf_page": 4,
+        "section": "2 Background",
+        "passage": "Scaled Dot-Product Attention Multi-Head Attention\n\nFigure 2: (left) Scaled Dot-Product Attention. (right) Multi-Head Attention consists of several\nattention layers running in parallel.\n\nof the values, where the weight assigned to each value is computed by a compatibility function of the\nquery with the corresponding key.\n\n3.2.1 Scaled Dot-Product Attention\n\nWe call our particular attention \"Scaled Dot-Product Attention\" (Figure 2). The input consists of\nqueries and keys of dimension dk, and values of dimension dv. We compute the dot products of the\nquery with all keys, divide each by √dk, and apply a softmax function to obtain the weights on the\nvalues.\n\nIn practice, we compute the attention function on a set of queries simultaneously, packed together\ninto a matrix Q. The keys and values are also packed together into matrices K and V . We compute\nthe matrix of outputs as:\n\nAttention(Q, K, V ) = softmax(QKT )V (1) √dk\n\nThe two most commonly used attention functions are additive attention [2], and dot-product (multiplicative) attention. Dot-product attention is identical to our algorithm, except for the scaling factor\nof √dk1 . Additive attention computes the compatibility function using a feed-forward network with\na single hidden layer. While the two are similar in theoretical complexity, dot-product attention is\nmuch faster and more space-efficient in practice, since it can be implemented using highly optimized\nmatrix multiplication code.\n\nWhile for small values of dk the two mechanisms perform similarly, additive attention outperforms\ndot product attention without scaling for larger values of dk [3]. We suspect that for large values of\ndk, the dot products grow large in magnitude, pushing the softmax function into regions where it has\nextremely small gradients 4. To counteract this effect, we scale the dot products by √dk1 .\n\n3.2.2 Multi-Head Attention\n\nInstead of performing a single attention function with dmodel-dimensional keys, values and queries,\nwe found it beneficial to linearly project the queries, keys and values h times with different, learned\nlinear projections to dk, dk and dv dimensions, respectively. On each of these projected versions of\nqueries, keys and values we then perform the attention function in parallel, yielding dv-dimensional\n\n4To illustrate why the dot products get large, assume that the components of q and k are independent random\nvariables with mean 0 and variance 1. Then their dot product, q · k = Pdki=1 qiki, has mean 0 and variance dk.",
+        "retrieval_scores": {
+          "rank": 1,
+          "rrf_score": 0.03278688524590164,
+          "bm25_score": 36.36873947998218,
+          "dense_score": 0.48623991058185795,
+          "bm25_rank": 1,
+          "dense_rank": 1
+        }
+      }
+    ],
+    "instruction": "Check the original PDFs. Do not grade from status or self-verification. Score accuracy and citation_grounding 0 or 1. For unanswerable questions score correct_refusal 0 or 1; otherwise leave it blank. Record pages and specific errors."
+  }
+]

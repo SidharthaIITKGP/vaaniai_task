@@ -1,0 +1,26 @@
+[
+  {
+    "configuration": "300_3",
+    "index": "results/final_retrieval_lab18/chunks_300.jsonl",
+    "chunk_count": 284,
+    "top_k": 3,
+    "questions": 18,
+    "quality_evaluated": false
+  },
+  {
+    "configuration": "500_5",
+    "index": "results/final_retrieval_lab18/chunks_500.jsonl",
+    "chunk_count": 180,
+    "top_k": 5,
+    "questions": 18,
+    "quality_evaluated": false
+  },
+  {
+    "configuration": "800_7",
+    "index": "results/final_retrieval_lab18/chunks_800.jsonl",
+    "chunk_count": 122,
+    "top_k": 7,
+    "questions": 18,
+    "quality_evaluated": false
+  }
+]

@@ -1,0 +1,100 @@
+{
+  "request_id": "4923420f-acc3-4068-afe9-260964bee41b",
+  "question_id": "H4",
+  "architecture": "verified",
+  "known_input_tokens": 6065,
+  "known_output_tokens": 872,
+  "known_total_tokens": 6937,
+  "unknown_usage_call_count": 1,
+  "exact_input_tokens": null,
+  "exact_output_tokens": null,
+  "exact_total_tokens": null,
+  "failed_call_reserved_tokens_estimate": 1744,
+  "measurement": "measured lower bound; incomplete usage",
+  "unknown_stages": "verification_format_attempt",
+  "raw_csv_totals": {
+    "total_input_tokens": "",
+    "total_output_tokens": ""
+  },
+  "evidence_matches": [
+    {
+      "path": "logs/relay.jsonl",
+      "line": 223,
+      "request_id": "4923420f-acc3-4068-afe9-260964bee41b",
+      "stage_usage": [
+        {
+          "stage": "generation",
+          "input_tokens": 2985,
+          "output_tokens": 235,
+          "provider_status_code": 200
+        },
+        {
+          "stage": "verification_format_attempt",
+          "input_tokens": null,
+          "output_tokens": null,
+          "provider_status_code": 400
+        },
+        {
+          "stage": "verification",
+          "input_tokens": 1056,
+          "output_tokens": 327,
+          "provider_status_code": 200
+        },
+        {
+          "stage": "revision",
+          "input_tokens": 1055,
+          "output_tokens": 206,
+          "provider_status_code": 200
+        },
+        {
+          "stage": "revision_verification",
+          "input_tokens": 969,
+          "output_tokens": 104,
+          "provider_status_code": 200
+        }
+      ]
+    },
+    {
+      "path": "results/architecture_formal18_repair_v2.attempts.jsonl",
+      "line": 53,
+      "request_id": "4923420f-acc3-4068-afe9-260964bee41b",
+      "stage_usage": [
+        {
+          "stage": "generation",
+          "input_tokens": 2985,
+          "output_tokens": 235,
+          "provider_status_code": 200
+        },
+        {
+          "stage": "verification_format_attempt",
+          "input_tokens": null,
+          "output_tokens": null,
+          "provider_status_code": 400
+        },
+        {
+          "stage": "verification",
+          "input_tokens": 1056,
+          "output_tokens": 327,
+          "provider_status_code": 200
+        },
+        {
+          "stage": "revision",
+          "input_tokens": 1055,
+          "output_tokens": 206,
+          "provider_status_code": 200
+        },
+        {
+          "stage": "revision_verification",
+          "input_tokens": 969,
+          "output_tokens": 104,
+          "provider_status_code": 200
+        }
+      ]
+    }
+  ],
+  "recovery": "Partial exact recovery only; one HTTP 400 call remains unmetered.",
+  "actual_total_tokens": null,
+  "reservation_based_total_estimate": 8681,
+  "reservation_estimate_is_actual_usage": false,
+  "reason": "CSV, append-only journal and request trace all lack usage for verification_format_attempt. Refilling rate-limit headers and failed text cannot recover exact billed input, hidden reasoning or output tokens."
+}

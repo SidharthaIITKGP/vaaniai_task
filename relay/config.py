@@ -22,6 +22,7 @@ class ProviderConfig:
     max_output_tokens: int = 1200
     timeout_seconds: float = 60.0
     scheduler: "SchedulerConfig" = field(default_factory=lambda: SchedulerConfig())
+    structured_grounding: bool = True
     stage_output_tokens: dict[str, int] = field(default_factory=lambda: {
         "routing": 256,
         "planning": 384,
@@ -41,6 +42,8 @@ class SchedulerConfig:
     max_queue_size: int = 8
     request_deadline_seconds: float = 240.0
     interactive_queue_deadline_seconds: float = 3.0
+    max_provider_cooldown_seconds: float | None = None
+    state_path: Path | None = None
 
 
 @dataclass(slots=True)

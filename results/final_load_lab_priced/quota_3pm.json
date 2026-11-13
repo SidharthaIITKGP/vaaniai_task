@@ -1,0 +1,9 @@
+{
+  "source": "simulated_policy_response",
+  "local_time": "15:00 Asia/Kolkata",
+  "http_status": 503,
+  "error_code": "daily_quota_exhausted",
+  "retry_after_seconds": null,
+  "model_calls": 0,
+  "response": "I can\u2019t answer from the papers right now because today\u2019s model request quota is exhausted. No answer has been generated. Please try again after the provider\u2019s quota resets."
+}

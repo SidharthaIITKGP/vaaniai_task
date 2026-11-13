@@ -1,0 +1,25 @@
+{
+  "inputs": [
+    {
+      "path": "results/architecture_formal18_recovered.csv",
+      "sha256": "0982b706477f4b2cc471995c8ecaf13ebcf755aaeb0c948fa8e70f2f9446a92c"
+    }
+  ],
+  "completed_outcomes": 50,
+  "infrastructure_failures": 2,
+  "papers": [
+    {
+      "path": "Research Papers/1706.03762v7 (1).pdf",
+      "sha256": "bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697"
+    },
+    {
+      "path": "Research Papers/2410.00037v1.pdf",
+      "sha256": "a687144cc77bea86b0c60ae800ccb1d3e0816033fa5c7960388fe29a0dbfcfac"
+    },
+    {
+      "path": "Research Papers/2507.07955v2.pdf",
+      "sha256": "04a2b32e6e82853cfc23c5db132750874a86cde99219ec6f664128f4aa83122f"
+    }
+  ],
+  "grading": "Independent review required; no grades inferred from pipeline status."
+}

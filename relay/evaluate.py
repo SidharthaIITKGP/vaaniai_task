@@ -6,7 +6,12 @@ import csv
 import json
 import hashlib
 import random
+import re
 import time
+import os
+import fcntl
+import uuid
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -22,6 +27,9 @@ from .providers.groq_provider import GroqProvider
 from .providers.base import ProviderError
 from .retrieval import HybridRetriever
 from .schemas import PipelineResult, RetrievedPassage
+from .checkpoint import (CheckpointStore, TERMINAL_STATUSES, compatible_history,
+                         config_id, evaluation_key, read_rows)
+from .providers.scheduler import RequestScheduler
 
 
 ARCHITECTURES = ("fast", "verified", "adaptive")
@@ -45,6 +53,9 @@ class BudgetedGroqProvider(GroqProvider):
         return await super()._reserve(payload)
 
 FIELDS = (
+    'evaluation_config_id', 'input_file', 'plan_order',
+    'origin_evaluation_config_id', 'quota_profile',
+    'stage_admission_attempts', 'confirmed_provider_dispatches',
     "configuration",
     "run_started_at", "run_completed_at", "execution_order", "random_seed",
     "evaluation_mode", "worker_count",
@@ -53,7 +64,7 @@ FIELDS = (
     "request_id", "status", "detected_intent", "routing_method", "routing_reason",
     "routing_complexity", "routing_relevant_papers_json", "routing_error",
     "routing_schema_error", "routing_fallback_used",
-    "adaptive_route", "adaptive_route_reason", "answer", "validated_citations_json",
+    "adaptive_route", "adaptive_route_reason", "answer", "draft_answer", "revised_draft", "validated_citations_json",
     "cited_sources_json", "retrieved_chunk_ids_json", "retrieval_trace_json",
     "citation_validation_json", "verification_json", "llm_calls_json", "provider_error_json",
     "citation_alias_mapping_json", "citation_error_reason", "verification_executed",
@@ -124,11 +135,43 @@ def completed_keys(path: Path, router_mode: str) -> set[tuple[str, str, str]]:
         return {
             (row.get("question_id", ""), row.get("architecture", ""), row.get("intent_router", ""))
             for row in csv.DictReader(handle)
-            if row.get("status") not in {
-                "runner_error", "provider_error", "rate_limited",
-                "capacity_unavailable", "capacity_timeout",
-            }
+            if row.get('intent_router') == router_mode and row.get('status') in TERMINAL_STATUSES
         }
+
+
+def quota_state_path(base: str | Path, profile: str = 'default') -> Path:
+    """Stable account labels isolate quotas; rotating a key does not reset them."""
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}', profile):
+        raise ValueError('Quota profile must contain 1-64 letters, digits, underscores or hyphens')
+    path = Path(base).expanduser()
+    return path if profile == 'default' else path.with_name(f'{path.stem}.{profile}{path.suffix}')
+
+
+def history_hold(rows: list[dict], quota_profile: str = 'default') -> dict | None:
+    holds = []
+    for row in rows:
+        # Untagged history belongs to the original account. Keep its results,
+        # but do not import its account-specific cooldown into another account.
+        if (row.get('quota_profile') or 'default') != quota_profile:
+            continue
+        error = json.loads(row.get('provider_error_json') or 'null') or {}
+        limit = error.get('rate_limit_type') or row.get('rate_limit_type')
+        retry = error.get('retry_after_seconds') or error.get('retry_after') or row.get('retry_after_seconds')
+        daily = limit in {'provider_tpd', 'provider_rpd', 'rpd_exhausted'}
+        if daily and not retry:
+            return {'rate_limit_type': limit, 'retry_not_before_epoch': None,
+                    'reason': 'Historical daily quota exhaustion has no measured reset time'}
+        if error.get('status_code') == 429 or retry:
+            try:
+                until = datetime.fromisoformat(row['run_completed_at']).timestamp() + float(retry)
+            except (ValueError, TypeError, KeyError):
+                continue
+            if until > time.time():
+                holds.append({'rate_limit_type': limit or 'provider_429',
+                              'retry_not_before_epoch': until,
+                              'earliest_retry_utc': datetime.fromtimestamp(until, timezone.utc).isoformat(),
+                              'reason': 'Unexpired Retry-After from a preserved attempt'})
+    return max(holds, key=lambda hold: hold['retry_not_before_epoch']) if holds else None
 
 
 def cited_sources(result: PipelineResult, chunk_by_id: dict[str, Any],
@@ -184,6 +227,8 @@ def result_row(question: EvaluationQuestion, architecture: str, router_mode: str
         "routing_fallback_used": metrics.get("routing_fallback_used"),
         "adaptive_route": result.route, "adaptive_route_reason": result.route_reason,
         "answer": result.answer,
+        "draft_answer": metrics.get('draft_answer'),
+        "revised_draft": metrics.get('revised_draft'),
         "validated_citations_json": json_cell(result.citations),
         "cited_sources_json": json_cell(cited_sources(result, chunk_by_id, recorder.calls)),
         "retrieved_chunk_ids_json": json_cell(result.retrieved_chunk_ids),
@@ -207,6 +252,7 @@ def result_row(question: EvaluationQuestion, architecture: str, router_mode: str
         "revision_ms", "provider_ttft_ms", "user_visible_ttft_ms", "total_ms",
         "total_input_tokens", "total_output_tokens",
         "queue_wait_ms", "provider_status_code", "rate_limit_type", "retry_after_seconds",
+        'stage_admission_attempts', 'confirmed_provider_dispatches',
     ):
         row[field] = metrics.get(field)
     return row
@@ -234,10 +280,26 @@ def append_row(path: Path, row: dict[str, Any]) -> None:
             writer.writeheader()
         writer.writerow(row)
         handle.flush()
+        os.fsync(handle.fileno())
+
+
+@contextmanager
+def account_lock(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise SystemExit('Another experiment owns the shared Groq scheduler. Stop it before resuming.')
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 async def run(args: argparse.Namespace) -> int:
-    architectures = tuple(args.architectures)
+    state_path = quota_state_path(args.quota_state, args.quota_profile)
+    architectures = tuple(dict.fromkeys(args.architectures))
     requested = set(args.question_id) if args.question_id else None
     if requested is None and args.subset == "smoke6":
         requested = SMOKE_6
@@ -253,7 +315,7 @@ async def run(args: argparse.Namespace) -> int:
     if args.max_runs is not None:
         plan = plan[:args.max_runs]
     output = Path(args.output).expanduser().resolve()
-    if args.dry_run:
+    if args.dry_run and not args.remaining:
         print(f"Dry run only: {len(plan)} runs, {len({q.question_id for q, _ in plan})} questions")
         print(f"Architectures: {', '.join(architectures)}")
         print(f"Intent router: {args.intent_router}")
@@ -274,6 +336,8 @@ async def run(args: argparse.Namespace) -> int:
     config.provider.scheduler.safety_margin = args.safety_margin
     config.provider.scheduler.request_deadline_seconds = args.request_deadline
     config.provider.scheduler.max_queue_size = args.max_queue_size
+    config.provider.scheduler.max_provider_cooldown_seconds = args.max_cooldown
+    config.provider.scheduler.state_path = state_path
     config.verification_evidence_mode = args.verification_evidence
     manifest = {
         'configuration': args.configuration,
@@ -287,34 +351,124 @@ async def run(args: argparse.Namespace) -> int:
         'source_sha256': hashlib.sha256(b''.join(
             p.read_bytes() for p in sorted(Path(__file__).parent.rglob('*.py')))).hexdigest(),
     }
+    manifest['evaluation_configuration'] = {
+        key: manifest[key] for key in ('configuration', 'model', 'top_k', 'index_sha256',
+            'routing', 'verification_evidence', 'revision', 'mode', 'rpm', 'tpm', 'safety_margin')}
+    manifest['evaluation_configuration'].update({
+        'structured_grounding': config.provider.structured_grounding,
+        'verifier_format_retries': 1, 'verifier_retry_output_tokens': 1024,
+        'reasoning_effort': config.provider.reasoning_effort,
+        'stage_output_tokens': config.provider.stage_output_tokens,
+        'router_output_tokens': config.intent_router.max_output_tokens,
+        'candidate_k': config.retrieval.candidate_k, 'rrf_k': config.retrieval.rrf_k,
+        'dense_model': config.retrieval.dense_model,
+        'max_revisions': config.max_revisions, 'max_expansions': config.max_retrieval_expansions,
+        'rag_logic_sha256': hashlib.sha256(b''.join(path.read_bytes() for path in [
+            *sorted((Path(__file__).parent / 'architectures').glob('*.py')),
+            *[Path(__file__).parent / name for name in
+              ('retrieval.py', 'chunking.py', 'verification.py', 'citation_validator.py', 'intent_router.py',
+               'grounded_output.py')]
+        ])).hexdigest()})
+    manifest['repair_campaign'] = bool(args.repair_from)
+    manifest['selection_eligible'] = not bool(args.repair_from)
+    manifest['repair_inputs'] = list(args.repair_from)
+    # Infrastructure provenance only: changing account does not invalidate
+    # accepted answers or change the evaluation configuration/resume key.
+    manifest['initial_quota_profile'] = args.quota_profile
+    terminal_statuses = (frozenset({'ok', 'insufficient_evidence', 'conversation', 'out_of_scope'})
+                         if args.repair_from else TERMINAL_STATUSES)
     manifest_path = output.with_suffix('.manifest.json')
     manifest_text = json.dumps(manifest, sort_keys=True, indent=2)
     if output.exists() and output.stat().st_size and not args.overwrite:
-        if not manifest_path.exists() or manifest_path.read_text() != manifest_text:
-            raise SystemExit('Resume configuration/code differs or manifest is missing. Use a new output filename.')
+        if not manifest_path.exists():
+            raise SystemExit('Missing output manifest; use --resume-from HISTORY --output NEW.csv')
+        existing_manifest = compatible_history(output, manifest)
+        if bool(existing_manifest.get('repair_campaign')) != manifest['repair_campaign']:
+            raise SystemExit('Repeat --repair-from when restarting a repair campaign; its provenance cannot be changed.')
+    identity = config_id(manifest)
+    all_rows = read_rows(output)
+    for history in args.resume_from:
+        compatible_history(Path(history), manifest)
+        all_rows.extend(read_rows(Path(history)))
+    for history in args.repair_from:
+        compatible_history(Path(history), manifest, repair=True)
+        all_rows.extend(read_rows(Path(history)))
+    expected_questions = {q.question_id: q.question for q, _ in plan}
+    for row in all_rows:
+        if row['question_id'] in expected_questions and row.get('question') != expected_questions[row['question_id']]:
+            raise SystemExit(f'Question text differs for {row["question_id"]}; cannot resume')
+    completed = {evaluation_key(row, identity) for row in all_rows if row.get('status') in terminal_statuses}
+    pending = [(order, q, a) for order, (q, a) in enumerate(plan, 1)
+               if (q.question_id, a, identity) not in completed]
+    if args.remaining:
+        print(f'Configuration: {identity}')
+        print(f'Completed: {len(plan) - len(pending)} / {len(plan)}; remaining: {len(pending)}')
+        if args.repair_from:
+            print('Repair campaign: inherited successes preserved; mixed-version results cannot select a winner.')
+        for order, question, architecture in pending:
+            print(f'{order:>2} {question.question_id:<3} {architecture}')
+        scheduler = RequestScheduler(config.provider.scheduler)
+        if scheduler.stop_reason:
+            print('Provider hold:', json.dumps(scheduler.stop_report()))
+        print(f'Quota profile: {args.quota_profile}; state: {state_path}')
+        if history_hold(all_rows, args.quota_profile):
+            print('Historical provider hold:', json.dumps(history_hold(all_rows, args.quota_profile)))
+        return 0
+    if args.overwrite:
+        raise SystemExit('Raw history is immutable. Choose a new --output filename instead of --overwrite.')
+    store = CheckpointStore(output, FIELDS, manifest)
     output.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(manifest_text)
+    if not manifest_path.exists():
+        manifest_path.write_text(manifest_text)
+    for history in args.resume_from:
+        store.import_history(Path(history))
+    for history in args.repair_from:
+        store.import_history(Path(history), repair=True)
+    # Reconstruct the derived view if a crash happened after journal fsync.
+    if store.rows:
+        store.snapshot()
+    pending = [(order, q, a) for order, (q, a) in enumerate(plan, 1)
+               if (q.question_id, a, identity) not in store.completed()]
+    scheduler = RequestScheduler(config.provider.scheduler)
+    inherited_hold = history_hold(all_rows, args.quota_profile)
+    if inherited_hold:
+        until = inherited_hold['retry_not_before_epoch']
+        await scheduler.note_429(max(0, until - time.time()) if until else None,
+                                 inherited_hold['rate_limit_type'])
+    try:
+        scheduler.admission_guard()
+    except ProviderError as exc:
+        print('Experiment stopped before model initialization:', json.dumps(exc.details()))
+        output.with_suffix('.stop.json').write_text(json.dumps(exc.details(), indent=2))
+        return 2
+    if not pending:
+        print('All evaluations already completed. No model calls needed.')
+        return 0
     chunks = load_chunks(config.index_path)
     base_retriever = HybridRetriever(chunks, config.retrieval)
     chunk_by_id = {chunk.chunk_id: chunk for chunk in chunks}
     provider = BudgetedGroqProvider(config.provider, env_path=config.root / ".env",
                                     max_calls=args.max_model_calls)
-    done = set() if args.overwrite else completed_keys(output, args.intent_router)
-    if args.overwrite:
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text("", encoding="utf-8")
-    pending = [(order, q, a) for order, (q, a) in enumerate(plan, 1)
-               if (q.question_id, a, args.intent_router) not in done]
+    provider.scheduler = scheduler
     initial_cache: dict[str, list[RetrievedPassage]] = {}
     cached_router = None
     if args.mode == "architecture-only":
         questions = {question.question: question for _, question, _ in pending}
         initial_cache = {text: base_retriever.retrieve(text) for text in questions}
         router = IntentRouter(provider, config.intent_router)
-        decisions = {text: await router.route(text) for text in questions}
+        decisions = {}
+        for text in questions:
+            decisions[text] = await router.route(text)
+            if scheduler.stop_reason:
+                output.with_suffix('.stop.json').write_text(json.dumps(scheduler.stop_report(), indent=2))
+                print('Experiment stopped during shared routing:', json.dumps(scheduler.stop_report()))
+                return 2
         cached_router = CachedEvaluationRouter(decisions)
+    print(f'Quota profile: {args.quota_profile}; state: {state_path}', flush=True)
     print(f"Running {len(pending)} of {len(plan)} planned requests with {args.workers} worker(s). Output: {output}")
     output_lock = asyncio.Lock()
+    stop = asyncio.Event()
+    stopped_reason: dict[str, Any] = {}
     queue: asyncio.Queue[tuple[int, EvaluationQuestion, str]] = asyncio.Queue()
     for item in pending:
         queue.put_nowait(item)
@@ -322,7 +476,11 @@ async def run(args: argparse.Namespace) -> int:
     async def run_one(execution_order: int, question: EvaluationQuestion, architecture: str):
         recorder = RecordingRetriever(base_retriever, initial_cache)
         started_at = datetime.now(timezone.utc).isoformat()
-        print(f"[{execution_order}/{len(plan)}] {question.question_id} / {architecture}", flush=True)
+        plan_order = execution_order
+        async with output_lock:
+            store.max_execution_order += 1
+            execution_order = store.max_execution_order
+        print(f"[dispatch {execution_order}, plan {plan_order}/{len(plan)}] {question.question_id} / {architecture}", flush=True)
         try:
             pipeline = RAGPipeline(architecture, recorder, provider, config, router=cached_router)
             result = await pipeline.run(question.question)
@@ -331,6 +489,7 @@ async def run(args: argparse.Namespace) -> int:
         except Exception as exc:  # Preserve progress and make unexpected runner failures inspectable.
             row = {field: "" for field in FIELDS}
             row.update({
+                'request_id': str(uuid.uuid4()),
                 "run_started_at": started_at,
                 "run_completed_at": datetime.now(timezone.utc).isoformat(),
                 "execution_order": execution_order, "random_seed": args.seed,
@@ -343,15 +502,30 @@ async def run(args: argparse.Namespace) -> int:
             })
         row["evaluation_mode"] = args.mode
         row['configuration'] = args.configuration or architecture
+        row['quota_profile'] = args.quota_profile
         row["worker_count"] = args.workers
+        row['plan_order'] = plan_order
         async with output_lock:
-            append_row(output, row)
+            store.record(row)
+            if scheduler.stop_reason:
+                stopped_reason.update(scheduler.stop_report())
+                stop.set()
+            elif row.get('status') in {'capacity_unavailable', 'capacity_timeout'}:
+                error = json.loads(row.get('provider_error_json') or 'null') or {}
+                retry = error.get('retry_after_seconds')
+                until = time.time() + retry if retry is not None else None
+                stopped_reason.update({'reason': 'Local admission failed; stop to avoid repeated doomed evaluations',
+                    'rate_limit_type': row.get('rate_limit_type'), 'retry_not_before_epoch': until,
+                    'earliest_retry_utc': datetime.fromtimestamp(until, timezone.utc).isoformat() if until else None,
+                    'earliest_retry_condition': 'Recheck account and local quota after the predicted wait.'
+                        if until else 'Resolve the recorded local admission condition before resuming.'})
+                stop.set()
         if args.delay > 0:
             await asyncio.sleep(args.delay)
 
     async def worker():
         while True:
-            if provider.attempted_calls >= provider.max_calls:
+            if stop.is_set() or scheduler.stop_reason or provider.attempted_calls >= provider.max_calls:
                 return
             try:
                 item = queue.get_nowait()
@@ -366,9 +540,17 @@ async def run(args: argparse.Namespace) -> int:
         async with asyncio.timeout(args.wall_seconds):
             await asyncio.gather(*(worker() for _ in range(args.workers)))
     except TimeoutError:
+        stopped_reason.update({'reason': 'Experiment wall deadline reached', 'retry_not_before_epoch': None})
         print('Experiment wall deadline reached; completed rows saved. Resume with the same command.')
+    if not stopped_reason and provider.attempted_calls >= provider.max_calls:
+        if any((q.question_id, a, identity) not in store.completed() for q, a in plan):
+            stopped_reason.update({'reason': 'Explicit model-call budget reached; unfinished cases remain',
+                                   'retry_not_before_epoch': None})
+    if stopped_reason:
+        output.with_suffix('.stop.json').write_text(json.dumps(stopped_reason, indent=2))
+        print('Experiment stopped:', json.dumps(stopped_reason))
     print(f"Finished. CSV: {output}")
-    return 0
+    return 2 if stopped_reason else 0
 
 
 def parser() -> argparse.ArgumentParser:
@@ -385,6 +567,14 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--index", help="Explicit variant index; never rebuilds the original")
     result.add_argument("--top-k", type=int, default=5)
     result.add_argument('--configuration', help='Retrieval candidate label for matched comparisons')
+    result.add_argument('--resume-from', action='append', default=[], help='Immutable earlier CSV with matching manifest')
+    result.add_argument('--repair-from', action='append', default=[],
+                        help='Preserve old successes; retry failed cases after explicit RAG fixes. Ineligible for winner selection.')
+    result.add_argument('--remaining', action='store_true', help='List pending evaluations without loading models or calling Groq')
+    result.add_argument('--max-cooldown', type=float, default=60.0)
+    result.add_argument('--quota-state', default='data/groq_quota_state.json')
+    result.add_argument('--quota-profile', default='default',
+                        help='Stable label per Groq account; isolates quota state and historical holds. Reuse on key rotation.')
     result.add_argument("--delay", type=float, default=0.0,
                         help="Seconds between requests; no automatic retries are performed")
     result.add_argument("--seed", type=int, default=42, help="Fixed execution-order seed")
@@ -416,7 +606,12 @@ def main() -> None:
         raise SystemExit("--workers must be positive")
     if args.max_queue_size <= 0 or args.workers > args.max_queue_size:
         raise SystemExit("--max-queue-size must be positive and at least --workers")
-    raise SystemExit(asyncio.run(run(args)))
+    if args.remaining or args.dry_run:
+        code = asyncio.run(run(args))
+    else:
+        with account_lock(quota_state_path(args.quota_state, args.quota_profile).with_suffix('.lock')):
+            code = asyncio.run(run(args))
+    raise SystemExit(code)
 
 
 if __name__ == "__main__":

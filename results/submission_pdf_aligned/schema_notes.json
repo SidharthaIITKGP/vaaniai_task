@@ -1,0 +1,38 @@
+{
+  "assignment_pdf": "The_Relay_Assignment_Brief.pdf",
+  "complete": false,
+  "required_columns": [
+    "request_id",
+    "scenario",
+    "source",
+    "start_time",
+    "first_token_ms",
+    "total_ms",
+    "status",
+    "retries",
+    "tokens_in",
+    "tokens_out",
+    "retrieval_setting",
+    "answer_grade"
+  ],
+  "additional_diagnostics": [
+    "grade_status",
+    "original_status",
+    "input_file",
+    "queue_wait_ms",
+    "processing_ms",
+    "queue_length",
+    "estimated_cost_usd",
+    "time_basis",
+    "pipeline_or_service",
+    "provider_ttft_ms",
+    "retry_after",
+    "http_status"
+  ],
+  "blank_answer_grades": "Not measured; no simulated answer-quality grades invented",
+  "stand_in_scope": "Virtual service simulation; pipeline-under-HTTP-load remains outstanding",
+  "first_token": "Arrival to visible token; RAG buffered until validation. Provider TTFT separately stored.",
+  "table_percentiles": "Available request measurements; missing values excluded; total includes failed requests.",
+  "success": "Transport/application completion; quality is independently recorded in answer_grade.",
+  "simulated_start_time": "Declared virtual anchor, not measured execution wall time."
+}

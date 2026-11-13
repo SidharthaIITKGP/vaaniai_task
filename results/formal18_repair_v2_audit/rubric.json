@@ -1,0 +1,10 @@
+{
+  "reviewer": "Codex independent PDF review; model-assisted, not a blinded human study",
+  "method": "Read all 39 final factual answers and their exact retrieved citation excerpts; check against the three original PDF versions. Ignore pipeline status and verifier verdict as evidence of correctness. Review is independent of pipeline generation, without additional API calls.",
+  "rubric": {
+    "accuracy": "1 if the requested core explanation is correct and complete, with no material false assertion or unestablished causal claim; 0 for material errors, omissions or overclaims. Minor imprecise wording is flagged separately. This is a strict binary score; partial answers receive 0.",
+    "citation_grounding": "1 only if the actual cited retrieved passages support every material factual claim. Correct facts found elsewhere in a PDF do not repair a weak retrieved citation. Cross-paper answers must cite each required paper. Appropriate unsupported-measurement refusals need no citation and score 1.",
+    "correct_refusal": "Only U questions: 1 for refusing the requested measurement absent from the papers; 0 for inventing it. Factual answer questions leave this grade blank.",
+    "minor_issues": "Broad wording such as enables or several is not alone a material factual contradiction. Flag imprecise mechanism attribution or quantitative wording and deduct citation grounding when the attached excerpt does not establish it. Specific false directions, mechanisms, exclusivity and fixed-length assertions are material."
+  }
+}

@@ -1,0 +1,8 @@
+experiment,source,candidate,status,p50_ms,p95_ms,p99_ms,accuracy,estimated_cost_usd
+architecture_quality,missing,,15+ matched independently graded questions not completed,,,,,
+retrieval_quality,missing,,Requires architecture winner and independently graded variant outputs,,,,,
+steady,simulated,standalone_llm,"{""ok"": 120}",815.0,1673.3019999999997,1832.0,,0.0031635
+burst,simulated,standalone_llm,"{""ok"": 8, ""queue_full"": 112}",831.625,971.197,984.1834,,0.0002037
+sustained_overload,simulated,standalone_llm,"{""ok"": 128, ""admission_timeout"": 396, ""queue_full"": 76}",3625.4049999999997,10982.2515,11808.6558,,0.003366
+halved_rpm,simulated,standalone_llm,"{""ok"": 75, ""admission_timeout"": 45}",9802.759999999998,10745.54,10832.0,,0.0019656
+daily_exhausted,simulated,standalone_llm,"{""daily_exhausted"": 120}",,,,,0.0

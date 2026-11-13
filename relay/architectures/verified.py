@@ -43,7 +43,8 @@ class VerifiedRAG(BaseArchitecture):
         trace.verification_supported = verification.supported
         if verification.supported and verification.decision == "return":
             return self.result(trace, "ok", answer, check.cited_ids, verification=verification)
-        if self.config.enable_revision and self.config.max_revisions > 0 and verification.decision == "revise":
+        if (self.config.enable_revision and self.config.max_revisions > 0
+                and verification.decision in {'revise', 'refuse'} and verification.unsupported_claims):
             return await self._revise_once(query, answer, evidence, trace, verification)
         return self.result(trace, "verification_failed", REFUSAL, verification=verification)
 
@@ -51,6 +52,9 @@ class VerifiedRAG(BaseArchitecture):
                            trace: RequestTrace, feedback: VerificationResult) -> PipelineResult:
         cited_ids = (trace.citation_validation or {}).get("cited_ids", [])
         revision_evidence = self._verification_evidence(evidence, cited_ids)
+        revision_ids = {p.chunk.chunk_id for p in revision_evidence}
+        revision_aliases = [alias for alias, chunk_id in trace.citation_alias_mapping.items()
+                            if chunk_id in revision_ids]
         with Timer() as timer:
             messages = [{"role": "system", "content": (
                 "Revise using only the evidence and feedback. Cite only aliases like [S1] or [S1][S2]. "
@@ -62,11 +66,15 @@ class VerifiedRAG(BaseArchitecture):
             )}]
             trace.pipeline_failure_stage = "revision"
             response = await self.provider.generate_streaming(
-                messages, stage="revision", request_id=trace.request_id, architecture=self.name)
+                messages, stage="revision", request_id=trace.request_id, architecture=self.name,
+                citation_aliases=revision_aliases)
             trace.add_call("revision", response)
             revised = response.text.strip()
+            trace.revised_draft = revised
             trace.pipeline_failure_stage = None
         trace.revision_ms = timer.elapsed_ms
+        if revised == REFUSAL:
+            return self.result(trace, 'insufficient_evidence', REFUSAL)
         check = self.deterministic_check(revised, evidence, trace)
         if not check.valid:
             return self.result(trace, "revision_failed", REFUSAL)

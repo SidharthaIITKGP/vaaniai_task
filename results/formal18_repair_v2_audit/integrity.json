@@ -1,0 +1,25 @@
+{
+  "raw_files_unchanged": true,
+  "sha256": {
+    "results/architecture_formal18_repair_v2.csv": "679178cd245854296e9b51611c676f3792db453ba3ca650ec4bbbb49e7630a6f",
+    "audits/formal18_repair_v2_review.json": "9a35241818eeec1232865357fd82cf7952122a332fb768d0833f1265a7f828d6",
+    "results/architecture_formal18_repair_v2.manifest.json": "955fb25822fa7d3b3152716133d9beca965d10d9bdd922db2a93b492b46c0f46",
+    "results/architecture_formal18_repair_v2.attempts.jsonl": "6175472ca5c3ea6312f81cc4bacb132ce337ca12d53ac935afd0a37edc3a826e",
+    "/home/sidharth/Coding/Vaani.ai/Research Papers/1706.03762v7 (1).pdf": "bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697",
+    "/home/sidharth/Coding/Vaani.ai/Research Papers/2410.00037v1.pdf": "a687144cc77bea86b0c60ae800ccb1d3e0816033fa5c7960388fe29a0dbfcfac",
+    "/home/sidharth/Coding/Vaani.ai/Research Papers/2507.07955v2.pdf": "04a2b32e6e82853cfc23c5db132750874a86cde99219ec6f664128f4aa83122f",
+    "logs/relay.jsonl": "5fde23c3076e433d896f101e64ab185959faa129bbc555a5fcf646c7cf602470",
+    "data/groq_quota_state.account2.json": "f622ccf5b7de940210770ee1000b76409989ee233bfdbf2c0db0b6dca7e99153",
+    "results/architecture_formal18_recovered.csv": "0982b706477f4b2cc471995c8ecaf13ebcf755aaeb0c948fa8e70f2f9446a92c",
+    "results/architecture_formal18.manifest.json": "78b956744c45c702f1320f790f0ad4c74b6ced6273764e7e545a7a9aa3d1053c",
+    "results/architecture_formal18.csv": "bc746d9ea71a1a1efd2918764200da14f8935e410d9942dd9b8f26ce22c3790f",
+    "results/architecture_formal18_repair_v2.stop.json": "161c41f6bb752af30a62fc79acc20acbc3c3317803dfcc894c682fd199acac5f",
+    "results/architecture_formal18_recovered.manifest.json": "24d295bfcb05291ba2a891dbe1bbedd6d2fab7c37822109547a28d47da97983a",
+    "results/architecture_formal18_recovered.stop.json": "a8703ae18e9053e95dabf340cf8b283c65b55196d47690c7e6e603ef855b0fc9",
+    "results/architecture_formal18_recovered.attempts.jsonl": "410af261d0b78883a780efd54da246bc09369bd2188a3ab10b98ca2b75bd1d65",
+    "/home/sidharth/Coding/Vaani.ai/data/groq_quota_state.account2.json": "f622ccf5b7de940210770ee1000b76409989ee233bfdbf2c0db0b6dca7e99153",
+    "/home/sidharth/Coding/Vaani.ai/data/groq_quota_state.json": "f52940daba948da9fd088d20420da2187b30a4567774fc7f97faec0c9bcd421b"
+  },
+  "measurements": "Real recorded execution only; reconstructed timing bounds and reservation estimates explicitly labeled.",
+  "no_live_model_calls": true
+}

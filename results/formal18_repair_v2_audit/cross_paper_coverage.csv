@@ -1,0 +1,4 @@
+request_id,question_id,architecture,required_papers,retrieved_papers,cited_papers,missing_retrieved_papers,missing_cited_papers,retrieval_coverage_complete,citation_coverage_complete
+67b4275b-2a61-49a3-a6ec-680e205c3692,X1,fast,1706.03762;2507.07955,1706.03762;2507.07955,1706.03762;2507.07955,,,True,True
+f8130cbb-46b3-4ba3-99c5-5ae90d1aca62,X1,adaptive,1706.03762;2507.07955,1706.03762;2507.07955,1706.03762;2507.07955,,,True,True
+910577ae-6fb8-47b7-ad2e-8c0d0b31e1fe,X1,verified,1706.03762;2507.07955,1706.03762;2507.07955,2507.07955,,1706.03762,True,False

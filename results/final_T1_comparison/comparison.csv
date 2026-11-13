@@ -1,0 +1,4 @@
+source,candidate,question_count,reviewed_count,selection_eligible,accuracy,citation_grounding,correct_refusals,refusal_questions,provider_failures,mean_total_ms,mean_queue_wait_ms,mean_model_calls,mean_input_tokens,mean_output_tokens
+real_with_independent_grades,verified,1,1,False,1.0,1.0,0,0,0,2039.154,0.14976999955251813,2.0,3702.0,387.0
+real_with_independent_grades,fast,1,1,False,0.0,0.0,0,0,0,9812.967,8550.741637000101,1.0,2659.0,289.0
+real_with_independent_grades,adaptive,1,1,False,1.0,1.0,0,0,0,46857.301,44294.091892001234,3.0,3751.0,492.0

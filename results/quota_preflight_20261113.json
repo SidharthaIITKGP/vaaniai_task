@@ -1,0 +1,17 @@
+{
+  "source": "real",
+  "purpose": "bounded quota preflight",
+  "usage": {
+    "input": 75,
+    "output": 24
+  },
+  "latency_ms": 828.6978200012527,
+  "headers": {
+    "x-ratelimit-limit-requests": "1000",
+    "x-ratelimit-remaining-requests": "949",
+    "x-ratelimit-reset-requests": "1h13m26.4s",
+    "x-ratelimit-limit-tokens": "8000",
+    "x-ratelimit-remaining-tokens": "7861",
+    "x-ratelimit-reset-tokens": "1.042s"
+  }
+}

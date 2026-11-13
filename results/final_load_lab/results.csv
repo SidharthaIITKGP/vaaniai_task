@@ -1,0 +1,11 @@
+source,scenario,architecture,requests,completed,outcomes_json,retry_total,max_queue_length,input_tokens,output_tokens,estimated_cost_usd,latency_ms_p50,latency_ms_p95,latency_ms_p99,queue_wait_ms_p50,queue_wait_ms_p95,queue_wait_ms_p99,processing_ms_p50,processing_ms_p95,processing_ms_p99,max_admission_retries
+simulated,steady,standalone_llm,120,120,"{""ok"": 120}",0,0,10080,8025,,815.0,1673.3019999999997,1832.0,0.0,0.0,0.0,815.0,1673.3019999999997,1832.0,0
+simulated,steady,standalone_llm,120,120,"{""ok"": 120}",0,0,10080,8025,,815.0,1673.3019999999997,1832.0,0.0,0.0,0.0,815.0,1673.3019999999997,1832.0,2
+simulated,burst,standalone_llm,120,8,"{""ok"": 8, ""queue_full"": 112}",0,8,672,511,,831.625,971.197,984.1834,0.0,0.0,0.0,831.625,971.197,984.1834,0
+simulated,burst,standalone_llm,120,8,"{""ok"": 8, ""queue_full"": 112}",0,8,672,511,,831.625,971.197,984.1834,0.0,0.0,0.0,831.625,971.197,984.1834,2
+simulated,sustained_overload,standalone_llm,120,24,"{""ok"": 24, ""queue_full"": 10, ""admission_timeout"": 86}",0,8,2016,1576,,803.3050000000001,986.659,1432.8673,0.0,0.0,0.0,803.3050000000001,986.659,1432.8673,0
+simulated,sustained_overload,standalone_llm,120,24,"{""ok"": 24, ""queue_full"": 10, ""admission_timeout"": 86}",172,8,2016,1576,,803.3050000000001,986.659,1432.8673,0.0,0.0,0.0,803.3050000000001,986.659,1432.8673,2
+simulated,halved_rpm,standalone_llm,120,120,"{""ok"": 120}",0,0,10080,8025,,815.0,1673.3019999999997,1832.0,0.0,0.0,0.0,815.0,1673.3019999999997,1832.0,0
+simulated,halved_rpm,standalone_llm,120,120,"{""ok"": 120}",0,0,10080,8025,,815.0,1673.3019999999997,1832.0,0.0,0.0,0.0,815.0,1673.3019999999997,1832.0,2
+simulated,daily_exhausted,standalone_llm,120,0,"{""daily_exhausted"": 120}",0,0,0,0,,,,,,,,,,,0
+simulated,daily_exhausted,standalone_llm,120,0,"{""daily_exhausted"": 120}",0,0,0,0,,,,,,,,,,,2

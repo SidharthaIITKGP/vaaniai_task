@@ -50,6 +50,7 @@ async def test_verified_two_calls(retriever, config):
 
 @pytest.mark.asyncio
 async def test_verification_failure_refuses(retriever, config):
+    config.enable_revision = False
     provider = MockProvider(["Unsupported claim [S1]", FAIL_VERIFY])
     result = await RAGPipeline("verified", retriever, provider, config).run("How does Moshi support dialogue?")
     assert result.status == "verification_failed"
@@ -77,6 +78,7 @@ async def test_adaptive_simple_and_complex_routes(retriever, config):
 
 @pytest.mark.asyncio
 async def test_valid_alias_to_unrelated_passage_is_rejected_semantically(retriever, config):
+    config.enable_revision = False
     provider = MockProvider(["Moshi is a translation-only model [S2]", FAIL_VERIFY])
     result = await RAGPipeline("verified", retriever, provider, config).run("How does Moshi support dialogue?")
     assert result.metrics["citation_validation"]["valid"] is True

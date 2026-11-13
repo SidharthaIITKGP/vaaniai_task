@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import re
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -12,7 +13,7 @@ from dotenv import load_dotenv
 
 from ..config import ProviderConfig
 from ..schemas import ProviderResponse, Usage
-from .base import ModelProvider, ProviderError, RateLimitError, TruncatedResponseError
+from .base import ModelProvider, ProviderError, RateLimitError, TruncatedResponseError, retry_seconds
 from .scheduler import RequestScheduler, Reservation, estimate_input_tokens
 
 
@@ -59,7 +60,8 @@ class GroqProvider(ModelProvider):
         if self.scheduler is None:
             return None
         return await self.scheduler.acquire(
-            estimate_input_tokens(payload.get("messages", [])),
+            estimate_input_tokens(payload.get("messages", []))
+            + (len(json.dumps(payload.get('response_format', {}))) + 3) // 4,
             int(payload.get("max_completion_tokens", 0)),
             deadline_seconds=deadline,
         )
@@ -93,49 +95,64 @@ class GroqProvider(ModelProvider):
 
     @staticmethod
     def _rate_headers(response: httpx.Response) -> dict[str, str]:
-        names = (
-            "retry-after", "x-ratelimit-limit-requests", "x-ratelimit-remaining-requests",
-            "x-ratelimit-reset-requests", "x-ratelimit-limit-tokens",
-            "x-ratelimit-remaining-tokens", "x-ratelimit-reset-tokens",
-        )
-        return {name: response.headers[name] for name in names if name in response.headers}
+        return {name: value for name, value in response.headers.items()
+                if name.startswith('x-ratelimit-') or name in {'retry-after', 'x-request-id'}}
 
     @staticmethod
     def _retry_seconds(value: str | None) -> float | None:
-        try:
-            return float(value) if value is not None else None
-        except ValueError:
-            return None
+        return retry_seconds(value)
 
     async def _observe_response(self, response: httpx.Response) -> dict[str, str]:
         headers = self._rate_headers(response)
         if self.scheduler:
             await self.scheduler.update_from_headers(headers)
-            if response.status_code == 429:
-                await self.scheduler.note_429(self._retry_seconds(headers.get("retry-after")))
         return headers
+
+    async def _check_http_error(self, response: httpx.Response,
+                                reservation: Reservation | None, started: float | None = None) -> None:
+        if response.status_code < 400:
+            return
+        raw = (await response.aread()).decode(errors='replace')
+        body = re.sub(r'gsk_[A-Za-z0-9_-]+', '[REDACTED]', raw)[:4000]
+        headers = self._rate_headers(response)
+        diagnostics = self._reservation_metadata(reservation, {})
+        diagnostics['dispatched'] = True
+        diagnostics['provider_latency_ms'] = (time.perf_counter() - started) * 1000 if started else None
+        if response.status_code == 429:
+            limit = _classify_429(body)
+            if limit == 'provider_429' and headers.get('x-ratelimit-remaining-requests') == '0':
+                limit = 'provider_rpd'
+            if self.scheduler:
+                await self.scheduler.refund_rejected(reservation)
+                await self.scheduler.note_429(retry_seconds(headers.get('retry-after')), limit)
+            raise RateLimitError(f'Groq HTTP 429 ({limit})', status_code=429,
+                retry_after=headers.get('retry-after'), rate_limit_type=limit,
+                queue_wait_ms=reservation.queue_wait_ms if reservation else None,
+                response_headers=headers, error_body=body, diagnostics=diagnostics)
+        # A JSON generation failure may have consumed reasoning tokens. Keep that reservation.
+        if self.scheduler and response.status_code < 500 and 'failed_generation' not in raw:
+            await self.scheduler.refund_rejected(reservation)
+        raise ProviderError(f'Groq HTTP {response.status_code}: {body[:500]}',
+            status_code=response.status_code, response_headers=headers, error_body=body,
+            queue_wait_ms=reservation.queue_wait_ms if reservation else None, diagnostics=diagnostics)
 
     async def _post(self, payload: dict[str, Any], reservation: Reservation | None) -> tuple[httpx.Response, dict[str, str]]:
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-        if self._client:
-            response = await self._client.post(self.endpoint, headers=headers, json=payload)
-        else:
-            async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:
-                response = await client.post(self.endpoint, headers=headers, json=payload)
+        started = time.perf_counter()
+        try:
+            if self._client:
+                response = await self._client.post(self.endpoint, headers=headers, json=payload)
+            else:
+                async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:
+                    response = await client.post(self.endpoint, headers=headers, json=payload)
+        except httpx.HTTPError as exc:
+            raise ProviderError(f'Groq network failure with uncertain token consumption: {type(exc).__name__}',
+                queue_wait_ms=reservation.queue_wait_ms if reservation else None,
+                diagnostics={**self._reservation_metadata(reservation, {}),
+                    'provider_latency_ms': (time.perf_counter() - started) * 1000,
+                    'dispatched': True}) from exc
         rate_headers = await self._observe_response(response)
-        if response.status_code == 429:
-            if self.scheduler:
-                await self.scheduler.refund_rejected(reservation)
-            retry = rate_headers.get("retry-after")
-            raise RateLimitError("Groq rate limit exceeded", status_code=429,
-                                 retry_after=retry, rate_limit_type=_classify_429(response.text),
-                                 queue_wait_ms=reservation.queue_wait_ms if reservation else None)
-        if response.status_code >= 400:
-            if self.scheduler and response.status_code < 500:
-                await self.scheduler.refund_rejected(reservation)
-            raise ProviderError(f"Groq HTTP {response.status_code}: {response.text[:500]}",
-                                status_code=response.status_code,
-                                queue_wait_ms=reservation.queue_wait_ms if reservation else None)
+        await self._check_http_error(response, reservation, started)
         return response, rate_headers
 
     async def generate(self, messages: list[dict[str, str]], **kwargs: Any) -> ProviderResponse:
@@ -176,31 +193,19 @@ class GroqProvider(ModelProvider):
 
     async def stream(self, messages: list[dict[str, str]], **kwargs: Any) -> AsyncIterator[str]:
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-        client = self._client or httpx.AsyncClient(timeout=self.config.timeout_seconds)
         owns = self._client is None
         context = self._context(kwargs)
         payload = self._payload(messages, stream=True, **kwargs)
         payload["_queue_deadline_seconds"] = context["queue_deadline_seconds"]
         reservation = await self._reserve(payload)
+        client = self._client or httpx.AsyncClient(timeout=self.config.timeout_seconds)
+        started = time.perf_counter()
         usage: dict[str, Any] = {}
         try:
             async with client.stream("POST", self.endpoint, headers=headers,
                                      json=payload) as response:
                 rate_headers = await self._observe_response(response)
-                if response.status_code == 429:
-                    if self.scheduler:
-                        await self.scheduler.refund_rejected(reservation)
-                    body = (await response.aread()).decode(errors="replace")
-                    raise RateLimitError("Groq rate limit exceeded", status_code=429,
-                                         retry_after=rate_headers.get("retry-after"),
-                                         rate_limit_type=_classify_429(body),
-                                         queue_wait_ms=reservation.queue_wait_ms if reservation else None)
-                if response.status_code >= 400:
-                    if self.scheduler and response.status_code < 500:
-                        await self.scheduler.refund_rejected(reservation)
-                    body = (await response.aread()).decode(errors="replace")
-                    raise ProviderError(f"Groq HTTP {response.status_code}: {body[:500]}",
-                                        status_code=response.status_code)
+                await self._check_http_error(response, reservation, started)
                 async for line in response.aiter_lines():
                     if not line.startswith("data:"):
                         continue
@@ -225,8 +230,22 @@ class GroqProvider(ModelProvider):
                 await client.aclose()
 
     async def generate_streaming(self, messages: list[dict[str, str]], **kwargs: Any) -> ProviderResponse:
+        aliases = kwargs.pop('citation_aliases', None)
+        if aliases and self.config.structured_grounding:
+            from ..grounded_output import GROUNDING_CONTRACT, draft_schema, render_draft
+            contract = {'role': 'system', 'content': GROUNDING_CONTRACT}
+            data, response = await self.generate_json(
+                [*messages, contract], json_schema=draft_schema(aliases),
+                schema_name='grounded_answer', strict=True, **kwargs)
+            try:
+                response.text = render_draft(data, aliases)
+            except ProviderError as exc:
+                raise _known_response_error(str(exc), response) from exc
+            # Strict Groq JSON does not stream. TTFT is honestly missing;
+            # user-visible release still includes every downstream check.
+            response.ttft_ms = None
+            return response
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-        client = self._client or httpx.AsyncClient(timeout=self.config.timeout_seconds)
         owns = self._client is None
         first_token: float | None = None
         chunks: list[str] = []
@@ -237,26 +256,14 @@ class GroqProvider(ModelProvider):
         payload = self._payload(messages, stream=True, **kwargs)
         payload["_queue_deadline_seconds"] = context["queue_deadline_seconds"]
         reservation = await self._reserve(payload)
+        client = self._client or httpx.AsyncClient(timeout=self.config.timeout_seconds)
         started = time.perf_counter()
         rate_headers: dict[str, str] = {}
         try:
             async with client.stream("POST", self.endpoint, headers=headers,
                                      json=payload) as response:
                 rate_headers = await self._observe_response(response)
-                if response.status_code == 429:
-                    if self.scheduler:
-                        await self.scheduler.refund_rejected(reservation)
-                    body = (await response.aread()).decode(errors="replace")
-                    raise RateLimitError("Groq rate limit exceeded", status_code=429,
-                                         retry_after=rate_headers.get("retry-after"),
-                                         rate_limit_type=_classify_429(body),
-                                         queue_wait_ms=reservation.queue_wait_ms if reservation else None)
-                if response.status_code >= 400:
-                    if self.scheduler and response.status_code < 500:
-                        await self.scheduler.refund_rejected(reservation)
-                    body = (await response.aread()).decode(errors="replace")
-                    raise ProviderError(f"Groq HTTP {response.status_code}: {body[:500]}",
-                                        status_code=response.status_code)
+                await self._check_http_error(response, reservation, started)
                 async for line in response.aiter_lines():
                     if not line.startswith("data:"):
                         continue
@@ -321,14 +328,30 @@ class GroqProvider(ModelProvider):
                                   rate_limit_headers=rate_headers, raw=data,
                                   **self._reservation_metadata(reservation, context))
         if finish_reason == "length":
-            raise TruncatedResponseError(
-                "Groq structured response was truncated at max_completion_tokens",
-                status_code=response.status_code,
-                queue_wait_ms=reservation.queue_wait_ms if reservation else None)
+            raise _known_response_error(
+                "Groq structured response was truncated at max_completion_tokens", result,
+                TruncatedResponseError)
         try:
             return json.loads(text), result
-        except json.JSONDecodeError as exc:
-            raise ProviderError(f"Groq returned invalid JSON: {exc}") from exc
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise _known_response_error(f"Groq returned invalid JSON: {exc}", result) from exc
+
+
+def _known_response_error(message: str, response: ProviderResponse,
+                          kind: type[ProviderError] = ProviderError) -> ProviderError:
+    """Retain billed usage even when a buffered JSON response cannot be accepted."""
+    return kind(message, status_code=response.provider_status_code,
+        queue_wait_ms=response.queue_wait_ms, response_headers=response.rate_limit_headers,
+        diagnostics={
+            'dispatched': True, 'usage_input_tokens': response.usage.input_tokens,
+            'usage_output_tokens': response.usage.output_tokens,
+            'provider_latency_ms': response.latency_ms,
+            'estimated_input_tokens': response.estimated_input_tokens,
+            'reserved_output_tokens': response.reserved_output_tokens,
+            'reserved_total_tokens': response.reserved_total_tokens,
+            'local_rpm_remaining': response.local_rpm_remaining,
+            'local_tpm_remaining': response.local_tpm_remaining,
+            'scheduler_wait_reason': response.scheduler_wait_reason})
 
 
 def _usage_total(usage: dict[str, Any]) -> int | None:
@@ -341,10 +364,16 @@ def _usage_total(usage: dict[str, Any]) -> int | None:
 
 def _classify_429(body: str) -> str:
     lower = body.lower()
+    if 'tokens per day' in lower or re.search(r'\btpd\b', lower):
+        return 'provider_tpd'
+    if 'requests per day' in lower or re.search(r'\brpd\b', lower):
+        return 'provider_rpd'
+    if 'input tokens per minute' in lower or re.search(r'\bitpm\b', lower):
+        return 'provider_itpm'
+    if 'output tokens per minute' in lower or re.search(r'\botpm\b', lower):
+        return 'provider_otpm'
     if "tokens per minute" in lower or "tpm" in lower:
         return "provider_tpm"
     if "requests per minute" in lower or "rpm" in lower:
         return "provider_rpm"
-    if "requests per day" in lower or "rpd" in lower or "daily" in lower:
-        return "provider_rpd"
     return "provider_429"

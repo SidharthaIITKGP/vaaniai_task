@@ -1,0 +1,19 @@
+source,file,architecture,questions,rows,outcomes,independent_accuracy,selection_eligible
+historical_real,results/architecture_evaluation.csv,fast,30,30,"{""ok"": 2, ""rate_limited"": 15, ""citation_validation_failed"": 5, ""out_of_scope"": 5, ""insufficient_evidence"": 1, ""conversation"": 2}",,False
+historical_real,results/architecture_evaluation.csv,verified,30,30,"{""citation_validation_failed"": 3, ""rate_limited"": 20, ""out_of_scope"": 4, ""insufficient_evidence"": 1, ""conversation"": 2}",,False
+historical_real,results/architecture_evaluation.csv,adaptive,30,30,"{""rate_limited"": 23, ""out_of_scope"": 5, ""conversation"": 2}",,False
+historical_real,results/final_bounded_T1.csv,fast,1,1,"{""citation_validation_failed"": 1}",,False
+historical_real,results/final_bounded_T1.csv,verified,1,1,"{""ok"": 1}",,False
+historical_real,results/final_bounded_T1.csv,adaptive,1,1,"{""ok"": 1}",,False
+historical_real,results/scheduler_smoke6.csv,fast,6,6,"{""insufficient_evidence"": 1, ""ok"": 2, ""conversation"": 1, ""citation_validation_failed"": 2}",,False
+historical_real,results/scheduler_smoke6.csv,verified,6,6,"{""insufficient_evidence"": 1, ""ok"": 3, ""conversation"": 1, ""capacity_unavailable"": 1}",,False
+historical_real,results/scheduler_smoke6.csv,adaptive,6,6,"{""ok"": 3, ""provider_error"": 1, ""insufficient_evidence"": 1, ""conversation"": 1}",,False
+historical_real,results/scheduler_smoke6_v2.csv,fast,6,6,"{""insufficient_evidence"": 1, ""ok"": 3, ""conversation"": 1, ""capacity_unavailable"": 1}",,False
+historical_real,results/scheduler_smoke6_v2.csv,verified,6,6,"{""insufficient_evidence"": 1, ""ok"": 3, ""conversation"": 1, ""verification_failed"": 1}",,False
+historical_real,results/scheduler_smoke6_v2.csv,adaptive,6,6,"{""ok"": 1, ""verification_failed"": 2, ""insufficient_evidence"": 1, ""conversation"": 1, ""provider_error"": 1}",,False
+historical_real,results/scheduler_smoke6_v3.csv,fast,6,6,"{""insufficient_evidence"": 1, ""ok"": 4, ""conversation"": 1}",,False
+historical_real,results/scheduler_smoke6_v3.csv,verified,6,6,"{""insufficient_evidence"": 1, ""ok"": 3, ""conversation"": 1, ""revision_verification_failed"": 1}",,False
+historical_real,results/scheduler_smoke6_v3.csv,adaptive,6,6,"{""ok"": 3, ""insufficient_evidence"": 1, ""conversation"": 1, ""revision_verification_failed"": 1}",,False
+historical_real,results/smoke_fixed.csv,fast,1,1,"{""ok"": 1}",,False
+historical_real,results/smoke_fixed.csv,verified,1,1,"{""ok"": 1}",,False
+historical_real,results/smoke_fixed.csv,adaptive,1,1,"{""ok"": 1}",,False

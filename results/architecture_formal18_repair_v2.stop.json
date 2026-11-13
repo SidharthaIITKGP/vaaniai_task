@@ -1,0 +1,19 @@
+{
+  "type": "RateLimitError",
+  "message": "Provider quota exhausted",
+  "status_code": null,
+  "retry_after": "1177.8784413337708",
+  "retry_after_seconds": 1177.8784413337708,
+  "rate_limit_type": "provider_tpd",
+  "queue_wait_ms": 0,
+  "response_headers": {},
+  "error_body": null,
+  "diagnostics": {
+    "stop_experiment": true,
+    "reason": "Provider quota exhausted",
+    "rate_limit_type": "provider_tpd",
+    "retry_not_before_epoch": 1794594270.633501,
+    "retry_condition": "Wait until Retry-After expires; admission will recheck quota. If no reset was provided, confirm provider quota before resuming.",
+    "dispatched": false
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "winner": null,
+  "formal_selection_eligible": false,
+  "reason": "Selective repair mixes 43 original-version successes with 11 corrected runs. Only ten same-version/same-account questions cover all three candidates; corrected-version common coverage is zero.",
+  "matched_question_ids": [
+    "H1",
+    "H2",
+    "M4",
+    "M6",
+    "T3",
+    "T6",
+    "U2",
+    "U3",
+    "U4",
+    "U5"
+  ],
+  "minimum_questions_required": 15,
+  "descriptive_best_factual_accuracy": "adaptive",
+  "descriptive_most_fully_correct_and_grounded": "fast",
+  "recommendation": "Keep all three candidates. Run the same 18 questions for all three under one frozen corrected configuration, then independently grade before choosing. Do not selectively repair wrong answers in that fair experiment.",
+  "guarded_selection": {
+    "winner": null,
+    "complete": false,
+    "policy": "lexicographic accuracy, citation grounding, correct refusal, reliability, input tokens, latency",
+    "reason": "Complete independent reviews, full planned coverage, and consistent non-repair configuration required",
+    "inputs": [
+      "results/architecture_formal18_repair_v2.csv"
+    ],
+    "grades": "results/formal18_repair_v2_audit/grades.csv"
+  }
+}

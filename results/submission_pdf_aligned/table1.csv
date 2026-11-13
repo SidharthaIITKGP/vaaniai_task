@@ -1,0 +1,8 @@
+Limit,Value you found,How you found it,Confidence
+Requests per minute,30,user account probe; 429s in groq_probe.csv,medium
+Tokens per minute,8000,real x-ratelimit-limit-tokens header,high
+Requests per day,1000,real x-ratelimit-limit-requests header,high
+Tokens per day,not measured,not measured,low
+Requests in flight at once,not measured,not measured,low
+What it returns when a limit is hit,HTTP 429; Retry-After,raw probe http_status/retry_after,high
+Time until it recovers,not measured,Retry-After observed; actual recovery not verified,low

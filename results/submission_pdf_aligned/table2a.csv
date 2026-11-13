@@ -1,0 +1,16 @@
+Scenario,Real or stand-in,Requests sent,Duration (s),Offered rate (per min),First token p50 (ms),First token p95 (ms),First token p99 (ms),Total time p50 (ms),Total time p95 (ms),Total time p99 (ms)
+steady,real,5,16.772,15.0,697.68,2128.28,2371.39,768.86,2192.47,2434.52
+burst_5,real,5,1.575,23760.02,903.4,1465.59,1489.89,982.31,1531.71,1559.09
+burst_10,real,10,1.011,21619.02,780.19,887.88,896.36,853.54,980.62,986.08
+burst_100,real,100,1.84,347145.11,723.26,1654.55,1744.57,478.59,938.84,1746.4
+quality_smoke_T1,real,3,58.712,10.12,9812.97,43152.87,46116.41,9812.97,43152.87,46116.41
+burst_retries0,stand-in,120,0.987,instant burst,766.65,880.46,882.84,0.0,678.17,935.52
+burst_retries2,stand-in,120,0.987,instant burst,766.65,880.46,882.84,0.0,678.17,935.52
+daily_exhausted_retries0,stand-in,120,0.0,instant burst,not measured,not measured,not measured,0.0,0.0,0.0
+daily_exhausted_retries2,stand-in,120,0.0,instant burst,not measured,not measured,not measured,0.0,0.0,0.0
+halved_rpm_retries0,stand-in,120,366.749,20.0,9712.49,10692.54,10767.95,9929.95,10565.92,10815.57
+halved_rpm_retries2,stand-in,120,382.19,20.0,27664.39,31121.81,31692.56,30000.0,30932.56,31494.49
+steady_retries0,stand-in,120,357.749,20.0,739.74,1626.92,1767.95,815.0,1673.3,1832.0
+steady_retries2,stand-in,120,357.749,20.0,739.74,1626.92,1767.95,815.0,1673.3,1832.0
+sustained_overload_retries0,stand-in,600,304.67,120.0,3535.22,10893.43,11747.59,10000.0,10734.39,10982.29
+sustained_overload_retries2,stand-in,600,304.246,120.0,2912.73,31001.06,31692.54,984.86,30734.39,31112.25

@@ -1,0 +1,4 @@
+source,candidate,question_count,reviewed_count,selection_eligible,accuracy,citation_grounding,correct_refusals,refusal_questions,provider_failures,mean_total_ms,mean_queue_wait_ms,mean_model_calls,mean_input_tokens,mean_output_tokens
+real_with_independent_grades,fast,18,18,False,0.7777777777777778,0.7777777777777778,5,5,0,24507.07338888889,23090.574980888818,1.0,3292.6111111111113,174.27777777777777
+real_with_independent_grades,adaptive,18,18,False,0.8888888888888888,0.7222222222222222,5,5,0,47092.50044444445,44505.020062110976,2.1666666666666665,4627.444444444444,320.5
+real_with_independent_grades,verified,18,18,False,0.7777777777777778,0.7222222222222222,5,5,0,42322.55177777778,39148.51301111121,2.0,,

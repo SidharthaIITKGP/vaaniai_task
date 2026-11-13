@@ -57,14 +57,18 @@ class BaseArchitecture(ABC):
                 "Answer only from the supplied evidence. Cite every factual claim using only the short aliases "
                 "shown at the start of each passage, formatted exactly like [S1] or [S1][S2]. Never put multiple aliases "
                 "inside one bracket and never cite CHUNK_ID, page, section, or SOURCE_ID text. "
-                f"If the evidence does not establish the answer, respond exactly: {REFUSAL}"
+                "Use concise factual claims. Do not add numerical results, quotations, or absolute guarantees "
+                "that the evidence does not establish. Follow the structured response schema when supplied. "
+                f"Otherwise, if unsupported, respond exactly: {REFUSAL}"
             )},
             {"role": "user", "content": f"QUESTION:\n{question}\n\nEVIDENCE:\n{format_evidence(evidence, aliases)}"},
         ]
         trace.pipeline_failure_stage = stage
         response = await self.provider.generate_streaming(
-            messages, stage=stage, request_id=trace.request_id, architecture=self.name)
+            messages, stage=stage, request_id=trace.request_id, architecture=self.name,
+            citation_aliases=list(aliases))
         trace.add_call(stage, response)
+        trace.draft_answer = response.text.strip()
         trace.pipeline_failure_stage = None
         return response.text.strip(), response
 

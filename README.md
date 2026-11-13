@@ -4,6 +4,16 @@ The experiment workflow, measured diagnostics, and remaining quality gates are d
 [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md). Current architecture and retrieval winners remain
 unselected until complete matched evaluations and independent PDF-based grading are available.
 
+For the recovered 52/54 formal18 run, use [the repair and grading instructions](docs/FORMAL18_REPAIRS.md).
+The completed 54-run repair snapshot now has an [independent PDF audit](docs/FORMAL18_AUDIT.md),
+including per-answer grades, quota findings and a guarded selection recommendation.
+Targeted repair preserves 43 accepted outcomes and retries 11 failed/missing cases;
+mixed-version repairs cannot select an architecture winner.
+The [original recovery notes](docs/FORMAL18_RECOVERY.md) document the earlier scheduler investigation.
+`--remaining` lists pending work without API calls. Recover legacy CSVs into a new
+`--output` using `--resume-from`; the original raw CSV and manifest are preserved.
+Provider cooldowns over 60 seconds stop the experiment after a durable checkpoint.
+
 This project implements the three Experiment 1 candidate architectures over exactly the required papers. It does not run benchmarks, generate evaluation data, or select a winner.
 
 ## Setup
